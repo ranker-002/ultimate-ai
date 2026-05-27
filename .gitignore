@@ -1,0 +1,9 @@
+node_modules/
+dist/
+memory/memory.json
+core/dna.json
+src/core/dna.json
+snapshots/
+forms/history/
+.temp_validate.js
+*.log

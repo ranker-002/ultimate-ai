@@ -1,0 +1,60 @@
+{
+  "skills": [
+    {
+      "name": "software_development",
+      "status": "dormant",
+      "domains": [
+        "js",
+        "ts",
+        "python",
+        "rust",
+        "go",
+        "all"
+      ]
+    },
+    {
+      "name": "music_composition",
+      "status": "dormant",
+      "domains": [
+        "midi",
+        "audio",
+        "theory"
+      ]
+    },
+    {
+      "name": "graphic_design",
+      "status": "dormant",
+      "domains": [
+        "svg",
+        "ui",
+        "branding"
+      ]
+    },
+    {
+      "name": "data_science",
+      "status": "dormant",
+      "domains": [
+        "ml",
+        "stats",
+        "visualization"
+      ]
+    },
+    {
+      "name": "cybersecurity",
+      "status": "dormant",
+      "domains": [
+        "pentest",
+        "analysis",
+        "hardening"
+      ]
+    },
+    {
+      "name": "meta_skill_creation",
+      "status": "always_active",
+      "domains": [
+        "synthesis",
+        "learning"
+      ]
+    }
+  ]
+}
