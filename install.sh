@@ -195,8 +195,18 @@ echo -e "    ${CYAN}curl -fsSL https://raw.githubusercontent.com/ranker-002/ulti
 echo ""
 
 if [ "$SHELL_CHANGED" = true ]; then
-  echo -e "  ${YELLOW}⚠ PATH was updated. Run this to apply now:${NC}"
-  echo ""
-  echo -e "    ${CYAN}source ~/.bashrc${NC}"
-  echo ""
+  echo -e "  ${YELLOW}⚠ PATH was updated. Reloading shell config now...${NC}"
+  # Detect user's shell and source the appropriate config
+  USER_SHELL=$(basename "${SHELL:-/bin/bash}")
+  case "$USER_SHELL" in
+    zsh)   [ -f ~/.zshrc ] && source ~/.zshrc ;;
+    bash)  [ -f ~/.bashrc ] && source ~/.bashrc ;;
+    fish)  [ -f ~/.config/fish/config.fish ] && source ~/.config/fish/config.fish ;;
+    *)     [ -f ~/.profile ] && source ~/.profile ;;
+  esac
+  ok "Shell config reloaded"
 fi
+
+echo ""
+echo -e "  ${GREEN}Ready! Run: ${CYAN}ultimate${NC}"
+echo ""

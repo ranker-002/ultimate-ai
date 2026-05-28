@@ -3,6 +3,7 @@ import { render, Box, Text, useInput, useApp, Static, Spacer } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 import { bootstrap } from './core/bootstrap.js';
+import { loadEnv, setupWizard } from './core/setup.js';
 import { DNA } from './core/dna.js';
 import { IntentEngine } from './core/intent_engine.js';
 import { Transformer } from './core/transformer.js';
@@ -507,5 +508,9 @@ const TUI = () => {
     </Box>
   );
 };
+
+// Run setup wizard BEFORE Ink takes over stdin
+await loadEnv();
+await setupWizard();
 
 render(<TUI />);
