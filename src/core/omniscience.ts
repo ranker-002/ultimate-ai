@@ -8,7 +8,7 @@ const ROOT = path.join(__dirname, '..', '..');
 type AlertListener = (alert: string) => void;
 
 export class Omniscience {
-  private watcher: chokidar.FSWatcher | null = null;
+  private watcher: any = null;
   private alerts: string[] = [];
   private listeners: AlertListener[] = [];
 

@@ -1,0 +1,7 @@
+{
+  "smoke-test": {
+    "input": "test",
+    "output": "ok"
+  },
+  "smoke-key": "smoke-value"
+}

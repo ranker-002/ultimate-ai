@@ -27,6 +27,7 @@
     "@openrouter/agent": "^0.7.0",
     "boxen": "^8.0.1",
     "chalk": "^5.6.2",
+    "chokidar": "^5.0.0",
     "ink": "^7.0.4",
     "ink-spinner": "^5.0.0",
     "ink-text-input": "^6.0.0",

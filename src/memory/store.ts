@@ -1,7 +1,14 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { pipeline } from '@xenova/transformers';
+
+let pipeline: any = null;
+try {
+  const mod = await import('@xenova/transformers');
+  pipeline = mod.pipeline;
+} catch {
+  // Embedding engine unavailable — semantic search will use keyword fallback
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
