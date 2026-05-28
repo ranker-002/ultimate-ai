@@ -139,9 +139,9 @@ const TUI = () => {
       setDnaData(dna.rawData);
       setStatus('Ready');
 
-      // Print welcome
+      // Print welcome using dna directly (setState is async)
       print('');
-      printHeader(dnaData, modeRef.current, 'Ready');
+      printHeader(dna.rawData, modeRef.current, 'Ready');
       print(`${C.dim}  Type a message or /help for commands${C.reset}`);
       print('');
 
