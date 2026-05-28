@@ -28,9 +28,31 @@ line()  { echo -e "${BOLD}──────────────────
 echo ""
 line
 echo -e "${CYAN}${BOLD}  ⚡ ULTIMATE — Living AI Entity${NC}"
-echo -e "  Installer v1.0"
+echo -e "  Installer v1.1"
 line
 echo ""
+
+# ── Cleanup old broken installs ─────────────────────
+info "Cleaning up old installations..."
+OLD_PATHS=(
+  "/tmp/ultimate-test-bin"
+  "/tmp/ultimate"
+  "$HOME/.ultimate-bin"
+)
+for old in "${OLD_PATHS[@]}"; do
+  if [ -e "$old" ] || [ -L "$old" ]; then
+    rm -rf "$old"
+    ok "Removed old: $old"
+  fi
+done
+
+# Remove broken aliases/functions from shell profiles
+for rc in ~/.bashrc ~/.bash_aliases ~/.profile ~/.zshrc; do
+  if [ -f "$rc" ] && grep -q '/tmp/ultimate' "$rc" 2>/dev/null; then
+    sed -i '\|/tmp/ultimate|d' "$rc"
+    ok "Cleaned broken path from $rc"
+  fi
+done
 
 # ── Check: git ──────────────────────────────────────
 if ! command -v git &>/dev/null; then
@@ -100,11 +122,10 @@ info "Building ULTIMATE..."
 npm run build
 ok "Build complete"
 
-# ── Create symlink ──────────────────────────────────
+# ── Create launcher ─────────────────────────────────
 echo ""
 mkdir -p "$BIN_DIR"
 
-# Create the ultimate launcher script
 cat > "$BIN_DIR/ultimate" << 'LAUNCHER'
 #!/usr/bin/env bash
 exec npx --yes tsx "$HOME/.ultimate/dist/index.js" "$@"
@@ -112,24 +133,33 @@ LAUNCHER
 chmod +x "$BIN_DIR/ultimate"
 ok "Created launcher: $BIN_DIR/ultimate"
 
-# ── PATH check ──────────────────────────────────────
+# ── Fix PATH in shell profiles ──────────────────────
+SHELL_CHANGED=false
+
+add_to_path() {
+  local file="$1"
+  local marker='export PATH="$HOME/.local/bin:$PATH"'
+  if [ -f "$file" ] && grep -qF '.local/bin' "$file" 2>/dev/null; then
+    return 0
+  fi
+  echo "" >> "$file"
+  echo "# ULTIMATE installer — added $(date +%Y-%m-%d)" >> "$file"
+  echo "$marker" >> "$file"
+  SHELL_CHANGED=true
+}
+
 if ! echo "$PATH" | tr ':' '\n' | grep -qx "$BIN_DIR"; then
-  echo ""
-  warn "$BIN_DIR is not in your PATH."
-  echo ""
-  echo "  Add it to your shell profile:"
-  echo ""
-  echo "    # bash:"
-  echo "    echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
-  echo ""
-  echo "    # zsh:"
-  echo "    echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc"
-  echo ""
-  echo "    # fish:"
-  echo "    fish_add_path ~/.local/bin"
-  echo ""
-  echo "  Then restart your shell or run:"
-  echo "    source ~/.bashrc  (or ~/.zshrc)"
+  warn "$BIN_DIR is not in your PATH. Adding it automatically..."
+
+  for rc in ~/.bashrc ~/.zshrc ~/.profile; do
+    if [ -f "$rc" ]; then
+      add_to_path "$rc"
+      ok "Updated $rc"
+    fi
+  done
+
+  # Also export for current session
+  export PATH="$BIN_DIR:$PATH"
 fi
 
 # ── API Key ─────────────────────────────────────────
@@ -157,9 +187,16 @@ echo -e "    ${CYAN}ultimate${NC}"
 echo ""
 echo -e "  Or run directly:"
 echo ""
-echo -e "    ${CYAN}node $HOME/.ultimate/dist/index.js${NC}"
+echo -e "    ${CYAN}npx --yes tsx $HOME/.ultimate/dist/index.js${NC}"
 echo ""
 echo -e "  Uninstall:"
 echo ""
 echo -e "    ${CYAN}curl -fsSL https://raw.githubusercontent.com/ranker-002/ultimate-ai/main/uninstall.sh | bash${NC}"
 echo ""
+
+if [ "$SHELL_CHANGED" = true ]; then
+  echo -e "  ${YELLOW}⚠ PATH was updated. Run this to apply now:${NC}"
+  echo ""
+  echo -e "    ${CYAN}source ~/.bashrc${NC}"
+  echo ""
+fi
