@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
-import { createWriteStream, readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { pipeline } from '@xenova/transformers';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -13,11 +13,13 @@ export interface MemoryEntry {
   key: string;
   value: any;
   timestamp: number;
+  embedding?: number[];
 }
 
 export class UniversalMemory {
   private shortTerm: MemoryEntry[] = [];
   private preferences: Record<string, any> = {};
+  private embedder: any = null;
 
   async restore(): Promise<void> {
     try {
@@ -31,14 +33,22 @@ export class UniversalMemory {
         this.preferences = {};
       }
 
-      // Load last N interactions from JSONL
+      // Load Interactions
       try {
         const raw = await fs.readFile(INTERACTIONS_FILE, 'utf-8');
         const lines = raw.trim().split('\n').filter(l => l.trim());
-        this.shortTerm = lines.map(l => JSON.parse(l)).slice(-50);
-        console.log(`🧠 Memory restored: ${this.shortTerm.length} recent interactions`);
+        this.shortTerm = lines.map(l => JSON.parse(l)).slice(-100);
+        console.log(`🧠 High-Fidelity Memory restored: ${this.shortTerm.length} interactions`);
       } catch {
         this.shortTerm = [];
+      }
+
+      // Initialize local embedding pipeline
+      try {
+        this.embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+        console.log('✨ Semantic Embedding Engine ready');
+      } catch (err) {
+        console.error('Failed to init embedding engine, falling back to keywords', err);
       }
     } catch (error) {
       console.error('Failed to restore memory', error);
@@ -49,46 +59,62 @@ export class UniversalMemory {
     const entry: MemoryEntry = { key, value, timestamp: Date.now() };
 
     if (key === 'interaction') {
-      this.shortTerm.push(entry);
-      if (this.shortTerm.length > 50) {
-        this.shortTerm = this.shortTerm.slice(-50);
+      // Generate embedding if possible
+      if (this.embedder) {
+        const text = typeof value === 'string' ? value : JSON.stringify(value);
+        const output = await this.embedder(text, { pooling: 'mean', normalize: true });
+        entry.embedding = Array.from(output.data);
       }
-      // Append to JSONL
+
+      this.shortTerm.push(entry);
+      if (this.shortTerm.length > 100) this.shortTerm.shift();
       await fs.appendFile(INTERACTIONS_FILE, JSON.stringify(entry) + '\n');
     } else {
-      // Store in preferences for other keys
       this.preferences[key] = value;
       await this.persistPrefs();
     }
   }
 
-  async recall(query: string, limit: number = 10): Promise<MemoryEntry[]> {
-    const queryWords = this.tokenize(query);
-    
-    // Rank shortTerm entries by overlap/similarity
-    const ranked = this.shortTerm
+  async recall(query: string, limit: number = 5): Promise<MemoryEntry[]> {
+    if (this.embedder) {
+      const output = await this.embedder(query, { pooling: 'mean', normalize: true });
+      const queryVector = Array.from(output.data) as number[];
+
+      const ranked = this.shortTerm
+        .filter(e => e.embedding)
+        .map(entry => ({
+          entry,
+          score: this.cosineSimilarity(queryVector, entry.embedding!)
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
+        .map(r => r.entry);
+
+      return ranked;
+    }
+
+    // Fallback to keyword overlap if no embedder
+    return this.keywordRecall(query, limit);
+  }
+
+  private cosineSimilarity(v1: number[], v2: number[]): number {
+    let dot = 0;
+    for (let i = 0; i < v1.length; i++) dot += v1[i]! * v2[i]!;
+    return dot;
+  }
+
+  private keywordRecall(query: string, limit: number): MemoryEntry[] {
+    const queryWords = query.toLowerCase().split(/\s+/);
+    return this.shortTerm
       .map(entry => {
-        const entryText = typeof entry.value === 'string' 
-          ? entry.value 
-          : JSON.stringify(entry.value);
-        const entryWords = this.tokenize(entryText);
-        const intersection = queryWords.filter(w => entryWords.includes(w));
-        const score = intersection.length / (Math.sqrt(queryWords.length * entryWords.length) || 1);
+        const entryStr = JSON.stringify(entry).toLowerCase();
+        const score = queryWords.filter(w => entryStr.includes(w)).length;
         return { entry, score };
       })
       .filter(r => r.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, limit)
       .map(r => r.entry);
-
-    return ranked;
-  }
-
-  private tokenize(text: string): string[] {
-    return text.toLowerCase()
-      .replace(/[^\w\s]/g, '')
-      .split(/\s+/)
-      .filter(w => w.length > 2); // Filter out common small words
   }
 
   getRecentContext(n: number = 10): MemoryEntry[] {
