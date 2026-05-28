@@ -404,8 +404,9 @@ const TUI = () => {
       setDnaData({ ...dna.rawData });
       setStatus('Ready');
     } catch (err: any) {
-      const errMsg = err.message || 'Unknown error';
-      setMessages(prev => [...prev, { role: 'system', content: `❌ Error: ${errMsg}`, timestamp: Date.now() }]);
+      console.error(' handleSubmit error:', err);
+      const errMsg = err?.message || err?.toString() || 'Unknown error';
+      addMessage('system', `❌ ${errMsg}`);
       setStatus('Error');
     } finally {
       setLoading(false);

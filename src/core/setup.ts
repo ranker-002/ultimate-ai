@@ -9,6 +9,7 @@ const ENV_FILE = path.join(ROOT, '.env');
 const SETUP_DONE = path.join(ROOT, '.setup_done');
 
 export async function loadEnv(): Promise<void> {
+  // 1. Load from .env file
   try {
     const content = await fs.readFile(ENV_FILE, 'utf-8');
     for (const line of content.split('\n')) {
@@ -23,6 +24,27 @@ export async function loadEnv(): Promise<void> {
       }
     }
   } catch {}
+
+  // 2. If OPENROUTER_API_KEY still not set, try shell profiles
+  if (!process.env.OPENROUTER_API_KEY) {
+    const home = process.env.HOME || '';
+    const profiles = [
+      path.join(home, '.bashrc'),
+      path.join(home, '.zshrc'),
+      path.join(home, '.profile'),
+      path.join(home, '.bash_profile')
+    ];
+    for (const profile of profiles) {
+      try {
+        const content = await fs.readFile(profile, 'utf-8');
+        const match = content.match(/export\s+OPENROUTER_API_KEY=["']?([^"'\s]+)["']?/);
+        if (match?.[1]) {
+          process.env.OPENROUTER_API_KEY = match[1];
+          break;
+        }
+      } catch {}
+    }
+  }
 }
 
 async function saveEnv(key: string, value: string): Promise<void> {
