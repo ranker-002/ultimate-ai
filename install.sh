@@ -107,7 +107,7 @@ mkdir -p "$BIN_DIR"
 # Create the ultimate launcher script
 cat > "$BIN_DIR/ultimate" << 'LAUNCHER'
 #!/usr/bin/env bash
-exec node "$HOME/.ultimate/dist/index.js" "$@"
+exec npx --yes tsx "$HOME/.ultimate/dist/index.js" "$@"
 LAUNCHER
 chmod +x "$BIN_DIR/ultimate"
 ok "Created launcher: $BIN_DIR/ultimate"
