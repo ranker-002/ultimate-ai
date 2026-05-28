@@ -29,19 +29,10 @@ interface Message {
 }
 
 const C = {
-  fg: '#ededed',
-  muted: '#666666',
-  dim: '#444444',
-  accent: '#0070f3',
-  success: '#0cce6b',
-  error: '#ee0000',
-  warning: '#f5a623',
-  border: '#333333',
-  headerBg: '#111111',
-  sidebarBg: '#0a0a0a',
-  user: '#0070f3',
-  ai: '#0cce6b',
-  system: '#f5a623',
+  fg: '#ededed', muted: '#666666', dim: '#444444',
+  accent: '#0070f3', success: '#0cce6b', error: '#ee0000',
+  warning: '#f5a623', border: '#333333', headerBg: '#111111',
+  sidebarBg: '#0a0a0a', user: '#0070f3', ai: '#0cce6b', system: '#f5a623',
 };
 
 const TUI = () => {
@@ -57,30 +48,18 @@ const TUI = () => {
   const [startTime] = useState(Date.now());
   const [rows, setRows] = useState(process.stdout.rows || 24);
   const [cols, setCols] = useState(process.stdout.columns || 80);
-  const [scrollOffset, setScrollOffset] = useState(0);
-  const autoScroll = useRef(true);
 
   const engines = useRef<{
-    intent: IntentEngine;
-    transformer: Transformer;
-    memory: UniversalMemory;
-    skills: SkillActivator;
-    evolution: EvolutionLoop;
-    llm: LLMEngine;
-    web: WebPerception;
-    omni: Omniscience;
-    dna: DNA;
-    oracle: Oracle;
-    patch: PatchEngine;
-    hive: HiveMind;
-    voice: VoiceEntity;
-    architect: Architect;
+    intent: IntentEngine; transformer: Transformer; memory: UniversalMemory;
+    skills: SkillActivator; evolution: EvolutionLoop; llm: LLMEngine;
+    web: WebPerception; omni: Omniscience; dna: DNA; oracle: Oracle;
+    patch: PatchEngine; hive: HiveMind; voice: VoiceEntity; architect: Architect;
   } | null>(null);
 
   const processingLock = useRef(false);
   const bgRef = useRef<BackgroundEvolution | null>(null);
+  const messagesEndRef = useRef<number>(0);
 
-  // Visible height for messages = total rows - header(3) - sidebar footer(1) - input(3) - borders(4)
   const sidebarW = cols >= 100 ? 28 : 22;
   const msgAreaHeight = rows - 8;
 
@@ -123,7 +102,6 @@ const TUI = () => {
       };
       process.on('SIGINT', shutdown);
       process.on('SIGTERM', shutdown);
-
       process.stdout.on('resize', () => {
         setRows(process.stdout.rows || 24);
         setCols(process.stdout.columns || 80);
@@ -132,32 +110,15 @@ const TUI = () => {
     init();
   }, []);
 
-  // Auto-scroll to bottom on new messages
+  // Always scroll to bottom when messages change
   useEffect(() => {
-    if (autoScroll.current) setScrollOffset(0);
+    messagesEndRef.current = messages.length;
   }, [messages.length]);
 
   useInput((_, key) => {
     if (key.tab) {
       setMode(prev => prev === 'chat' ? 'museum' : prev === 'museum' ? 'architect' : 'chat');
       if (mode === 'museum') loadSnapshots();
-      return;
-    }
-    // Scroll controls
-    if (key.upArrow || key.pageUp) {
-      autoScroll.current = false;
-      setScrollOffset(prev => Math.min(prev + 3, Math.max(0, messages.length - msgAreaHeight)));
-    }
-    if (key.downArrow || key.pageDown) {
-      setScrollOffset(prev => {
-        const next = Math.max(0, prev - 3);
-        if (next === 0) autoScroll.current = true;
-        return next;
-      });
-    }
-    if (key.escape) {
-      autoScroll.current = true;
-      setScrollOffset(0);
     }
   });
 
@@ -185,45 +146,38 @@ const TUI = () => {
       case 'status': {
         const uptime = Math.floor((Date.now() - startTime) / 1000);
         addMessage('system', [
+          `ULTIMATE v${dna.rawData.identity.version}`,
+          `─────────────────────`,
+          `Form: ${dna.rawData.identity.currentForm}`,
+          `Mutations: ${dna.rawData.mutations}`,
+          `Memory: ${dna.rawData.memory.interaction_count} interactions`,
+          `Traits: ${dna.getTraitProfile()}`,
+          `Dominant: ${dna.getDominantTrait()}`,
           ``,
-          `  ULTIMATE v${dna.rawData.identity.version}`,
-          `  ───────────────────────`,
-          `  Form       ${dna.rawData.identity.currentForm}`,
-          `  Mutations  ${dna.rawData.mutations}`,
-          `  Memory     ${dna.rawData.memory.interaction_count} interactions`,
-          `  Traits     ${dna.getTraitProfile()}`,
-          `  Dominant   ${dna.getDominantTrait()}`,
-          ``,
-          `  Systems`,
-          `  ───────────────────────`,
-          `  Oracle     ${oracle.getScreenshotCount()} captures`,
-          `  Hive       ${(await hive.getStatus()).configured ? 'synced' : 'offline'}`,
-          `  Voice      STT:${voice.isAvailable().stt ? 'on' : 'off'} TTS:${voice.isAvailable().tts ? 'on' : 'off'}`,
-          `  Architect  ${architect.getTasks().length} tasks`,
-          `  Uptime     ${Math.floor(uptime / 60)}m ${uptime % 60}s`,
+          `Oracle: ${oracle.getScreenshotCount()} captures`,
+          `Hive: ${(await hive.getStatus()).configured ? 'synced' : 'offline'}`,
+          `Voice: STT:${voice.isAvailable().stt ? 'on' : 'off'} TTS:${voice.isAvailable().tts ? 'on' : 'off'}`,
+          `Architect: ${architect.getTasks().length} tasks`,
+          `Uptime: ${Math.floor(uptime / 60)}m ${uptime % 60}s`,
         ].join('\n'));
         return true;
       }
       case 'help': {
         addMessage('system', [
-          ``,
-          `  Commands`,
-          `  ───────────────────────`,
-          `  /quit, /clear, /status, /help`,
-          `  /screenshot [terminal]`,
-          `  /hive push|pull|status`,
-          `  /architect analyze|todo|next|status`,
-          `  /voice listen|say <text>`,
-          `  /traits, /patch quick <file>`,
-          ``,
-          `  Scroll: ↑↓ arrows · ESC = bottom`,
+          `Commands:`,
+          `/quit · /clear · /status · /help`,
+          `/screenshot [terminal]`,
+          `/hive push|pull|status`,
+          `/architect analyze|todo|next|status`,
+          `/voice listen|say <text>`,
+          `/traits · /patch quick <file>`,
         ].join('\n'));
         return true;
       }
       case 'screenshot': {
         setStatus('Capturing...');
         const r = args[0] === 'terminal' ? await oracle.captureTerminal() : await oracle.captureScreen();
-        addMessage('system', r.success ? `✓ Saved: ${r.filePath}` : `✗ ${r.error}`);
+        addMessage('system', r.success ? `✓ ${r.filePath}` : `✗ ${r.error}`);
         return true;
       }
       case 'hive': {
@@ -236,7 +190,7 @@ const TUI = () => {
       case 'architect': {
         const a = args[0] || 'status';
         setStatus('Working...');
-        if (a === 'analyze') { const c = await architect.analyzeProject(); addMessage('system', `${c.name} · ${c.currentPhase} · ${c.techStack.join(', ')}`); }
+        if (a === 'analyze') { const c = await architect.analyzeProject(); addMessage('system', `${c.name} · ${c.currentPhase}`); }
         else if (a === 'todo') { addMessage('system', (await architect.generateTODO()).substring(0, 2000)); }
         else if (a === 'next') { addMessage('system', await architect.suggestNextStep()); }
         else { addMessage('system', await architect.getProjectStatus()); }
@@ -259,17 +213,14 @@ const TUI = () => {
       }
       case 'traits': {
         const d = engines.current.dna;
-        const h = d.getTraitHistory().slice(-5);
-        addMessage('system', `Drift: ${d.getTraitProfile()}\nRecent: ${h.map(x => `${x.trait}:${x.delta > 0 ? '+' : ''}${x.delta.toFixed(2)}`).join(', ') || 'none'}`);
+        addMessage('system', `Drift: ${d.getTraitProfile()}`);
         return true;
       }
       case 'patch': {
         if (args[0] === 'quick' && args.length >= 4) {
           const file = args[1] || '';
-          const oldText = args[2] || '';
-          const newText = args.slice(3).join(' ');
-          const ok = await engines.current.patch.quickPatch(file, oldText, newText);
-          addMessage('system', ok ? `✓ Patched ${file}` : `✗ Anchor not found`);
+          const ok = await engines.current.patch.quickPatch(file, args[2] || '', args.slice(3).join(' '));
+          addMessage('system', ok ? `✓ ${file}` : `✗ Anchor not found`);
         } else { addMessage('system', 'Usage: /patch quick <file> "old" "new"'); }
         return true;
       }
@@ -283,8 +234,6 @@ const TUI = () => {
     setInput('');
     setLoading(true);
     setStatus('Thinking...');
-    autoScroll.current = true;
-    setScrollOffset(0);
 
     setMessages(prev => [...prev, { role: 'user', content: value, timestamp: Date.now() }]);
 
@@ -306,16 +255,10 @@ const TUI = () => {
       if (value.toLowerCase().includes('search') || value.toLowerCase().includes('web')) {
         setStatus('Researching...'); ctx = `\n\nWEB:\n${await web.search(value)}`;
       }
-      let sc = "";
-      if (value.toLowerCase().includes('screenshot') || value.toLowerCase().includes('look at')) {
-        setStatus('Capturing...');
-        const cap = await engines.current.oracle.captureScreen();
-        if (cap.success) sc = `\n\n[SCREENSHOT: ${cap.filePath}]`;
-      }
 
       const mem = await memory.recall(value, 5);
       const sysPrompt = llm.buildDefaultSystemPrompt() +
-        (skills.getActiveContext() ? `\n\nSKILLS:\n${skills.getActiveContext()}` : '') + ctx + sc;
+        (skills.getActiveContext() ? `\n\nSKILLS:\n${skills.getActiveContext()}` : '') + ctx;
 
       const response = await llm.generate({
         systemPrompt: sysPrompt,
@@ -344,7 +287,7 @@ const TUI = () => {
 
   if (!dnaData) {
     return (
-      <Box flexDirection="column" height={rows} width={cols} padding={1}>
+      <Box flexDirection="column" padding={1}>
         <Text color={C.accent} bold> ⚡ ULTIMATE </Text>
         <Text color={C.muted}> Loading...</Text>
       </Box>
@@ -354,11 +297,8 @@ const TUI = () => {
   const modeLabel = mode === 'chat' ? 'CHAT' : mode === 'museum' ? 'HISTORY' : 'BUILD';
   const statusColor = status === 'Error' ? C.error : status === 'Ready' ? C.success : C.accent;
 
-  // Calculate visible messages with scroll
-  const visibleMessages = messages.slice(
-    Math.max(0, messages.length - msgAreaHeight - scrollOffset),
-    messages.length - scrollOffset
-  );
+  // Show last N messages that fit in the visible area
+  const visibleMessages = messages.slice(-Math.min(messages.length, msgAreaHeight));
 
   return (
     <Box flexDirection="column" height={rows} width={cols}>
@@ -370,7 +310,6 @@ const TUI = () => {
         <Spacer />
         <Text color={statusColor}>● </Text>
         <Text color={C.muted}>{status}</Text>
-        {scrollOffset > 0 && <Text color={C.warning}> ↑{scrollOffset}</Text>}
       </Box>
 
       <Box flexDirection="row" flexGrow={1}>
@@ -404,26 +343,24 @@ const TUI = () => {
         <Box flexDirection="column" flexGrow={1} borderStyle="single" borderColor={C.border}>
           {mode === 'chat' && (
             <Box flexDirection="column" flexGrow={1}>
-              {/* Messages */}
               <Box flexDirection="column" flexGrow={1} paddingX={1}>
                 {messages.length === 0 && (
                   <Box flexDirection="column" marginTop={2}>
                     <Text color={C.dim}> Ready. Type a message or /help</Text>
                   </Box>
                 )}
-                {visibleMessages.map((msg) => {
+                {visibleMessages.map((msg, idx) => {
                   const roleColor = msg.role === 'user' ? C.user : msg.role === 'system' ? C.system : C.ai;
-                  const roleIcon = msg.role === 'user' ? '›' : msg.role === 'system' ? '!' : '‹';
-                  const roleName = msg.role === 'user' ? 'You' : msg.role === 'system' ? 'System' : 'Ultimate';
+                  const roleIcon = msg.role === 'user' ? '>' : msg.role === 'system' ? '!' : '<';
+                  const roleName = msg.role === 'user' ? 'You' : msg.role === 'system' ? 'Sys' : 'ULT';
                   return (
-                    <Box key={msg.timestamp} flexDirection="column" marginBottom={1}>
+                    <Box key={msg.timestamp || idx} flexDirection="column">
                       <Text bold color={roleColor}> {roleIcon} {roleName}</Text>
                       <Text color={C.fg} wrap="wrap">{msg.content}</Text>
                     </Box>
                   );
                 })}
               </Box>
-              {/* Input */}
               <Box borderStyle="single" borderColor={loading ? C.accent : C.border} paddingX={1} flexDirection="row" height={3}>
                 <Text color={C.accent}> ❯ </Text>
                 {loading ? <Spinner type="dots" /> : <TextInput value={input} onChange={setInput} onSubmit={handleSubmit} placeholder="Type a message..." />}
@@ -435,8 +372,8 @@ const TUI = () => {
             <Box flexDirection="column" flexGrow={1} paddingX={1}>
               <Text bold color={C.fg}> Evolution History</Text>
               <Text color={C.dim}>────────────────────────────</Text>
-              {snapshots.length === 0 ? <Text color={C.muted}> No snapshots yet</Text> :
-                snapshots.map((s, i) => <Box key={i} marginBottom={1}><Text color={C.dim}> [{new Date(s.timestamp).toLocaleDateString()}] </Text><Text color={C.accent}>{s.reason}</Text></Box>)}
+              {snapshots.length === 0 ? <Text color={C.muted}> No snapshots</Text> :
+                snapshots.map((s, i) => <Box key={i}><Text color={C.dim}> [{new Date(s.timestamp).toLocaleDateString()}] </Text><Text color={C.accent}>{s.reason}</Text></Box>)}
             </Box>
           )}
 
