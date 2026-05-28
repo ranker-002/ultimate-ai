@@ -2,6 +2,7 @@ import { LLMEngine } from './llm_engine.js';
 import { SnapshotManager } from './snapshot.js';
 import { SystemTools } from './system_tools.js';
 import { DNA } from './dna.js';
+import { SelfHealing } from './self_healing.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -11,6 +12,7 @@ const ROOT = path.join(__dirname, '..', '..');
 const llm = new LLMEngine();
 const snapshots = new SnapshotManager();
 const sys = new SystemTools();
+const healer = new SelfHealing();
 
 export class Transformer {
   async transformSelf(targetForm: string, intent: any): Promise<void> {
@@ -18,19 +20,19 @@ export class Transformer {
     console.log('━'.repeat(50));
 
     // 1. Create safety snapshot
-    console.log('1/7 Creating security snapshot...');
+    console.log('1/8 Creating security snapshot...');
     const snapshotId = await snapshots.createSnapshot(`pre-transform-to-${targetForm}`);
 
     try {
       // 2. Read current codebase
-      console.log('2/7 Reading current codebase...');
+      console.log('2/8 Reading current codebase...');
       const codebase = await sys.readEntireCodebase();
       if (codebase.chunked) {
         console.log('   ⚠ Codebase truncated for context window');
       }
 
       // 3. Generate new code via LLM
-      console.log('3/7 Generating new source code...');
+      console.log('3/8 Generating new source code...');
       const dna = DNA.getInstance();
       const transformPrompt = llm.buildTransformationPrompt(codebase, targetForm, intent, dna.rawData);
 
@@ -41,7 +43,7 @@ export class Transformer {
       });
 
       // 4. Parse new code
-      console.log('4/7 Parsing new code...');
+      console.log('4/8 Parsing new code...');
       let newCode;
       try {
         newCode = JSON.parse(this.cleanJSON(raw));
@@ -54,7 +56,7 @@ export class Transformer {
       }
 
       // 5. Validate syntax
-      console.log('5/7 Validating syntax...');
+      console.log('5/8 Validating syntax...');
       for (const [filePath, content] of Object.entries(newCode.files)) {
         if (filePath.endsWith('.ts') || filePath.endsWith('.js')) {
           const isTS = filePath.endsWith('.ts');
@@ -67,14 +69,14 @@ export class Transformer {
 
       // 6. Install dependencies
       if (newCode.newDependencies && newCode.newDependencies.length > 0) {
-        console.log('6/7 Installing new dependencies...');
+        console.log('6/8 Installing new dependencies...');
         await sys.installDependencies(newCode.newDependencies);
       } else {
-        console.log('6/7 No new dependencies needed');
+        console.log('6/8 No new dependencies needed');
       }
 
       // 7. Write new source code
-      console.log('7/7 Writing new source code...');
+      console.log('7/8 Writing new source code...');
       for (const [filePath, content] of Object.entries(newCode.files)) {
         // PROTECTION: Never overwrite DNA logic or Snapshot manager in this step
         const protectedFiles = ['src/core/dna.ts', 'src/core/snapshot.ts', 'src/core/dna.json'];
@@ -108,15 +110,23 @@ export class Transformer {
       console.log(`   ${newCode.transformationSummary || ''}`);
       console.log('━'.repeat(50));
 
-      // Rebuild and Relaunch
+      // Rebuild
       console.log('🛠 Rebuilding project...');
       await sys.exec('npm run build');
+
+      // 8. Behavioral Validation (Self-Healing)
+      console.log('8/8 Performing behavioral validation...');
+      const isHealthy = await healer.validateBehavior();
+      if (!isHealthy) {
+        throw new Error('Transformation failed behavioral validation');
+      }
+
       await sys.relaunchSelf(newCode.newEntryPoint || 'dist/index.js');
 
     } catch (error: any) {
       console.error(`\n❌ TRANSFORMATION FAILED: ${error.message}`);
       console.log('⏪ Rolling back...');
-      await snapshots.rollback(snapshotId);
+      await healer.heal(snapshotId);
       console.log('✓ Rollback completed — ULTIMATE stable');
       throw error;
     }

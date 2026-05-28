@@ -62,12 +62,33 @@ export class UniversalMemory {
     }
   }
 
-  async recall(query: string): Promise<MemoryEntry[]> {
-    const queryWords = query.toLowerCase().split(' ');
-    return this.shortTerm.filter(entry => {
-      const entryStr = JSON.stringify(entry).toLowerCase();
-      return queryWords.some(w => entryStr.includes(w));
-    }).slice(-10);
+  async recall(query: string, limit: number = 10): Promise<MemoryEntry[]> {
+    const queryWords = this.tokenize(query);
+    
+    // Rank shortTerm entries by overlap/similarity
+    const ranked = this.shortTerm
+      .map(entry => {
+        const entryText = typeof entry.value === 'string' 
+          ? entry.value 
+          : JSON.stringify(entry.value);
+        const entryWords = this.tokenize(entryText);
+        const intersection = queryWords.filter(w => entryWords.includes(w));
+        const score = intersection.length / (Math.sqrt(queryWords.length * entryWords.length) || 1);
+        return { entry, score };
+      })
+      .filter(r => r.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map(r => r.entry);
+
+    return ranked;
+  }
+
+  private tokenize(text: string): string[] {
+    return text.toLowerCase()
+      .replace(/[^\w\s]/g, '')
+      .split(/\s+/)
+      .filter(w => w.length > 2); // Filter out common small words
   }
 
   getRecentContext(n: number = 10): MemoryEntry[] {
