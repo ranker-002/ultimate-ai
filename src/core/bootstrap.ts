@@ -38,6 +38,15 @@ async function createInitialDNA(dnaPath: string) {
       birth: Date.now(),
       currentForm: 'terminal-cli'
     },
+    traits: {
+      logic: 0.5,
+      creativity: 0.5,
+      caution: 0.5,
+      empathy: 0.5,
+      ambition: 0.5,
+      precision: 0.5
+    },
+    traitHistory: [],
     mutations: 0,
     evolution_log: [],
     memory: {

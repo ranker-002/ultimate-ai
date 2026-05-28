@@ -1,5 +1,5 @@
 import { LLMEngine } from './llm_engine.js';
-import { DNA } from './dna.js';
+import { DNA, type DNAData } from './dna.js';
 
 const llm = new LLMEngine();
 const EVOLUTION_THRESHOLD = 0.7;
@@ -21,6 +21,7 @@ export class EvolutionLoop {
     if (interaction.skills.length > 0) score += 0.1;
 
     // 2. LLM Analysis for deeper evolution
+    let analysis: any = null;
     try {
       const raw = await llm.generate({
         systemPrompt: 'You analyze AI interactions for self-improvement. Respond only in JSON.',
@@ -29,44 +30,85 @@ Input: "${interaction.input}"
 Output: "${interaction.output?.substring(0, 500)}"
 Skills used: ${JSON.stringify(interaction.skills)}
 Heuristic Quality Score: ${score}
+Current DNA traits: ${dna.getTraitProfile()}
 
 Return this JSON:
 {
   "quality": 0.0 to 1.0,
   "improvements": [{"type": "skill|algorithm|memory", "description": "...", "priority": 0.0-1.0}],
   "newCapabilities": ["capabilities this exchange revealed"],
-  "userInsights": {"detected preferences": "..."}
+  "userInsights": {"detected preferences": "..."},
+  "traitShifts": {
+    "logic": +/-delta (e.g. 0.05, -0.03),
+    "creativity": +/-delta,
+    "caution": +/-delta,
+    "empathy": +/-delta,
+    "ambition": +/-delta,
+    "precision": +/-delta
+  },
+  "traitReason": "brief explanation of trait changes"
 }`,
-        maxTokens: 800
+        maxTokens: 1000
       });
 
-      const analysis = JSON.parse(raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
-      const finalQuality = (analysis.quality + score) / 2;
+      analysis = JSON.parse(raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
+    } catch (error) {
+      // Fallback: heuristic-only analysis
+      analysis = {
+        quality: score,
+        improvements: [],
+        newCapabilities: [],
+        userInsights: {},
+        traitShifts: {},
+        traitReason: 'LLM analysis failed, using heuristic fallback'
+      };
+    }
 
-      const highPriority = (analysis.improvements || []).filter((i: any) => i.priority > EVOLUTION_THRESHOLD);
+    const finalQuality = (analysis.quality + score) / 2;
 
-      if (highPriority.length > 0 || finalQuality > 0.8) {
-        await dna.incrementMutations({
-          type: 'micro_evolution',
-          improvements: highPriority,
-          quality: finalQuality,
-          revealedCapabilities: analysis.newCapabilities || []
-        });
-      }
-
-      if (analysis.userInsights) {
-        for (const [key, value] of Object.entries(analysis.userInsights)) {
-          await dna.updatePreference(key, value);
+    // 3. NEURAL DRIFT: Shift traits based on interaction quality
+    if (analysis.traitShifts && Object.keys(analysis.traitShifts).length > 0) {
+      await dna.shiftTraits(analysis.traitShifts, analysis.traitReason || 'evolution', finalQuality);
+    } else {
+      // Heuristic trait shifts when LLM doesn't provide them
+      const heuristicShifts: Partial<Record<keyof DNAData['traits'], number>> = {};
+      if (finalQuality > 0.7) {
+        const dominant = dna.getDominantTrait();
+        if (dominant in heuristicShifts) {
+          (heuristicShifts as any)[dominant] = 0.02;
+        } else {
+          (heuristicShifts as any)[dominant] = 0.02;
         }
       }
-    } catch (error) {
-      // Fallback to heuristic-only mutation logging if LLM fails
-      if (score > 0.7) {
-        await dna.incrementMutations({
-          type: 'heuristic_evolution',
-          quality: score,
-          note: 'LLM analysis failed, using heuristic score'
-        });
+      if (interaction.output.length < 50) {
+        // Short response: boost ambition to be more thorough
+        heuristicShifts.ambition = 0.01;
+      }
+      if (interaction.skills.length > 0) {
+        // Used skills: boost precision
+        heuristicShifts.precision = 0.01;
+      }
+      if (Object.keys(heuristicShifts).length > 0) {
+        await dna.shiftTraits(heuristicShifts, 'heuristic_drift', finalQuality);
+      }
+    }
+
+    // 4. Standard mutation logic
+    const highPriority = (analysis.improvements || []).filter((i: any) => i.priority > EVOLUTION_THRESHOLD);
+
+    if (highPriority.length > 0 || finalQuality > 0.8) {
+      await dna.incrementMutations({
+        type: 'micro_evolution',
+        improvements: highPriority,
+        quality: finalQuality,
+        revealedCapabilities: analysis.newCapabilities || [],
+        traitProfile: dna.getTraitProfile()
+      });
+    }
+
+    if (analysis.userInsights) {
+      for (const [key, value] of Object.entries(analysis.userInsights)) {
+        await dna.updatePreference(key, value);
       }
     }
   }
