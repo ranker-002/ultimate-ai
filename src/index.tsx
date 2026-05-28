@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { render, Box, Text, useInput, useApp, Spacer } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
@@ -22,32 +22,83 @@ import { Architect } from './core/architect.js';
 import fs from 'fs/promises';
 import path from 'path';
 
-interface Message {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: number;
-}
-
 const C = {
-  fg: '#ededed', muted: '#666666', dim: '#444444',
-  accent: '#0070f3', success: '#0cce6b', error: '#ee0000',
-  warning: '#f5a623', border: '#333333', headerBg: '#111111',
-  sidebarBg: '#0a0a0a', user: '#0070f3', ai: '#0cce6b', system: '#f5a623',
+  reset: '\x1b[0m',
+  bold: '\x1b[1m',
+  dim: '\x1b[2m',
+  cyan: '\x1b[36m',
+  blue: '\x1b[34m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  red: '\x1b[31m',
+  magenta: '\x1b[35m',
+  gray: '\x1b[90m',
+  white: '\x1b[37m',
+  bgDark: '\x1b[48;5;234m',
 };
 
+function print(msg: string) { process.stdout.write(msg + '\n'); }
+function printLine(color: string, text: string) { process.stdout.write(`${color}${text}${C.reset}\n`); }
+
+// ── Print header to terminal scrollback ────────────
+function printHeader(dnaData: any, mode: string, status: string) {
+  const statusColor = status === 'Error' ? C.red : status === 'Ready' ? C.green : C.blue;
+  print(`${C.bold}${C.cyan} ⚡ ULTIMATE ${C.reset}${C.dim}v${dnaData.identity.version}${C.reset} ${C.gray}│${C.reset} ${C.blue}${mode.toUpperCase()}${C.reset} ${statusColor}●${C.reset} ${C.dim}${status}${C.reset}`);
+  print(`${C.gray}────────────────────────────────────────────${C.reset}`);
+}
+
+function printMessage(role: string, content: string) {
+  if (role === 'user') {
+    print(`${C.bold}${C.blue} > You${C.reset}`);
+  } else if (role === 'system') {
+    print(`${C.bold}${C.yellow} ! System${C.reset}`);
+  } else {
+    print(`${C.bold}${C.green} < ULTIMATE${C.reset}`);
+  }
+  // Print content line by line with proper wrapping
+  const lines = content.split('\n');
+  for (const line of lines) {
+    print(`  ${C.white}${line}${C.reset}`);
+  }
+  print('');
+}
+
+function printStatus(dnaData: any, startTime: number) {
+  const uptime = Math.floor((Date.now() - startTime) / 1000);
+  print(`${C.bold}${C.white} ULTIMATE v${dnaData.identity.version}${C.reset}`);
+  print(`${C.gray}─────────────────────${C.reset}`);
+  print(`  Form:      ${C.white}${dnaData.identity.currentForm}${C.reset}`);
+  print(`  Mutations: ${C.white}${dnaData.mutations}${C.reset}`);
+  print(`  Memory:    ${C.white}${dnaData.memory.interaction_count} interactions${C.reset}`);
+  print(`  Traits:    ${C.white}${dnaData.traits ? Object.entries(dnaData.traits).map(([k,v]: [string,any]) => `${k}:${(v as number).toFixed(1)}`).join(' ') : 'none'}${C.reset}`);
+  print(`  Uptime:    ${C.white}${Math.floor(uptime / 60)}m ${uptime % 60}s${C.reset}`);
+  print('');
+}
+
+function printHelp() {
+  print(`${C.bold}${C.white} Commands${C.reset}`);
+  print(`${C.gray}─────────────────────${C.reset}`);
+  print(`  ${C.cyan}/quit${C.reset}              Exit`);
+  print(`  ${C.cyan}/clear${C.reset}             Clear screen`);
+  print(`  ${C.cyan}/status${C.reset}            System status`);
+  print(`  ${C.cyan}/help${C.reset}              Show this`);
+  print(`  ${C.cyan}/screenshot${C.reset}        Capture screen`);
+  print(`  ${C.cyan}/hive push|pull${C.reset}    Sync DNA`);
+  print(`  ${C.cyan}/architect${C.reset}         Project manage`);
+  print(`  ${C.cyan}/voice listen|say${C.reset}  Voice I/O`);
+  print(`  ${C.cyan}/traits${C.reset}            Drift profile`);
+  print(`  ${C.cyan}/patch quick${C.reset}       Surgical edit`);
+  print('');
+}
+
+// ── Ink TUI (input only) ──────────────────────────
 const TUI = () => {
   const { exit } = useApp();
-  const [mode, setMode] = useState<'chat' | 'museum' | 'architect'>('chat');
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [dnaData, setDnaData] = useState<any>(null);
   const [status, setStatus] = useState('Initializing...');
-  const [alerts, setAlerts] = useState<string[]>([]);
-  const [snapshots, setSnapshots] = useState<any[]>([]);
   const [startTime] = useState(Date.now());
-  const [rows, setRows] = useState(process.stdout.rows || 24);
-  const [cols, setCols] = useState(process.stdout.columns || 80);
 
   const engines = useRef<{
     intent: IntentEngine; transformer: Transformer; memory: UniversalMemory;
@@ -58,10 +109,8 @@ const TUI = () => {
 
   const processingLock = useRef(false);
   const bgRef = useRef<BackgroundEvolution | null>(null);
-  const messagesEndRef = useRef<number>(0);
-
-  const sidebarW = cols >= 100 ? 28 : 22;
-  const msgAreaHeight = rows - 8;
+  const modeRef = useRef('chat');
+  const alertCount = useRef(0);
 
   useEffect(() => {
     const init = async () => {
@@ -89,139 +138,96 @@ const TUI = () => {
 
       setDnaData(dna.rawData);
       setStatus('Ready');
+
+      // Print welcome
+      print('');
+      printHeader(dnaData, modeRef.current, 'Ready');
+      print(`${C.dim}  Type a message or /help for commands${C.reset}`);
+      print('');
+
       const bg = new BackgroundEvolution();
       bgRef.current = bg;
       bg.start();
-      omni.onAlert((alert) => setAlerts(prev => [...prev.slice(-4), alert]));
 
-      const shutdown = async () => {
+      omni.onAlert((alert) => {
+        alertCount.current++;
+        if (alertCount.current <= 3) {
+          print(`${C.yellow} ⚠ ${alert}${C.reset}`);
+        }
+      });
+
+      process.on('SIGINT', () => {
         omni.stop();
         bgRef.current?.stop();
-        try { await dna.save(); } catch {}
+        dna.save().catch(() => {});
         process.exit(0);
-      };
-      process.on('SIGINT', shutdown);
-      process.on('SIGTERM', shutdown);
-      process.stdout.on('resize', () => {
-        setRows(process.stdout.rows || 24);
-        setCols(process.stdout.columns || 80);
       });
     };
     init();
   }, []);
 
-  // Always scroll to bottom when messages change
-  useEffect(() => {
-    messagesEndRef.current = messages.length;
-  }, [messages.length]);
-
   useInput((_, key) => {
     if (key.tab) {
-      setMode(prev => prev === 'chat' ? 'museum' : prev === 'museum' ? 'architect' : 'chat');
-      if (mode === 'museum') loadSnapshots();
+      modeRef.current = modeRef.current === 'chat' ? 'museum' : modeRef.current === 'museum' ? 'architect' : 'chat';
     }
   });
-
-  const loadSnapshots = async () => {
-    try {
-      const entries = await fs.readdir('snapshots');
-      const metas = [];
-      for (const e of entries) {
-        try { metas.push(JSON.parse(await fs.readFile(path.join('snapshots', e, 'meta.json'), 'utf-8'))); } catch {}
-      }
-      setSnapshots(metas.sort((a, b) => b.timestamp - a.timestamp));
-    } catch {}
-  };
-
-  const addMessage = (role: 'user' | 'assistant' | 'system', content: string) => {
-    setMessages(prev => [...prev, { role, content, timestamp: Date.now() }]);
-  };
 
   const handleCommand = async (cmd: string, args: string[]): Promise<boolean> => {
     if (!engines.current) return false;
     const { oracle, hive, voice, architect, dna } = engines.current;
     switch (cmd) {
       case 'quit': exit(); return true;
-      case 'clear': setMessages([]); return true;
-      case 'status': {
-        const uptime = Math.floor((Date.now() - startTime) / 1000);
-        addMessage('system', [
-          `ULTIMATE v${dna.rawData.identity.version}`,
-          `─────────────────────`,
-          `Form: ${dna.rawData.identity.currentForm}`,
-          `Mutations: ${dna.rawData.mutations}`,
-          `Memory: ${dna.rawData.memory.interaction_count} interactions`,
-          `Traits: ${dna.getTraitProfile()}`,
-          `Dominant: ${dna.getDominantTrait()}`,
-          ``,
-          `Oracle: ${oracle.getScreenshotCount()} captures`,
-          `Hive: ${(await hive.getStatus()).configured ? 'synced' : 'offline'}`,
-          `Voice: STT:${voice.isAvailable().stt ? 'on' : 'off'} TTS:${voice.isAvailable().tts ? 'on' : 'off'}`,
-          `Architect: ${architect.getTasks().length} tasks`,
-          `Uptime: ${Math.floor(uptime / 60)}m ${uptime % 60}s`,
-        ].join('\n'));
-        return true;
-      }
-      case 'help': {
-        addMessage('system', [
-          `Commands:`,
-          `/quit · /clear · /status · /help`,
-          `/screenshot [terminal]`,
-          `/hive push|pull|status`,
-          `/architect analyze|todo|next|status`,
-          `/voice listen|say <text>`,
-          `/traits · /patch quick <file>`,
-        ].join('\n'));
-        return true;
-      }
+      case 'clear': process.stdout.write('\x1b[2J\x1b[H'); return true;
+      case 'status': printStatus(dna.rawData, startTime); return true;
+      case 'help': printHelp(); return true;
       case 'screenshot': {
         setStatus('Capturing...');
         const r = args[0] === 'terminal' ? await oracle.captureTerminal() : await oracle.captureScreen();
-        addMessage('system', r.success ? `✓ ${r.filePath}` : `✗ ${r.error}`);
+        printMessage('system', r.success ? `✓ ${r.filePath}` : `✗ ${r.error}`);
         return true;
       }
       case 'hive': {
         const a = args[0] || 'status';
-        if (a === 'push') { setStatus('Syncing...'); addMessage('system', (await hive.push()).message); }
-        else if (a === 'pull') { setStatus('Pulling...'); addMessage('system', (await hive.pull()).message); }
-        else { const s = await hive.getStatus(); addMessage('system', `Hive: ${s.configured ? 'synced' : 'offline'} | Device: ${s.device}`); }
+        if (a === 'push') { setStatus('Syncing...'); printMessage('system', (await hive.push()).message); }
+        else if (a === 'pull') { setStatus('Pulling...'); printMessage('system', (await hive.pull()).message); }
+        else { const s = await hive.getStatus(); printMessage('system', `Hive: ${s.configured ? 'synced' : 'offline'} | Device: ${s.device}`); }
         return true;
       }
       case 'architect': {
         const a = args[0] || 'status';
         setStatus('Working...');
-        if (a === 'analyze') { const c = await architect.analyzeProject(); addMessage('system', `${c.name} · ${c.currentPhase}`); }
-        else if (a === 'todo') { addMessage('system', (await architect.generateTODO()).substring(0, 2000)); }
-        else if (a === 'next') { addMessage('system', await architect.suggestNextStep()); }
-        else { addMessage('system', await architect.getProjectStatus()); }
+        if (a === 'analyze') { const c = await architect.analyzeProject(); printMessage('system', `${c.name} · ${c.currentPhase}`); }
+        else if (a === 'todo') { printMessage('system', (await architect.generateTODO()).substring(0, 2000)); }
+        else if (a === 'next') { printMessage('system', await architect.suggestNextStep()); }
+        else { printMessage('system', await architect.getProjectStatus()); }
         return true;
       }
       case 'voice': {
         const a = args[0] || 'status';
         if (a === 'listen') {
           setStatus('Listening...');
-          try { const r = await voice.transcribeFromMicrophone(5); addMessage('system', `"${r.text}" (${r.engine})`); setInput(r.text); }
-          catch (e: any) { addMessage('system', `✗ ${e.message}`); }
+          try { const r = await voice.transcribeFromMicrophone(5); printMessage('system', `"${r.text}" (${r.engine})`); setInput(r.text); }
+          catch (e: any) { printMessage('system', `✗ ${e.message}`); }
         } else if (a === 'say' && args.length > 1) {
           const r = await voice.speak(args.slice(1).join(' '));
-          addMessage('system', r.success ? '✓ Speaking' : '✗ TTS failed');
+          printMessage('system', r.success ? '✓ Speaking' : '✗ TTS failed');
         } else {
           const av = voice.isAvailable();
-          addMessage('system', `STT: ${av.stt ? 'on' : 'off'} | TTS: ${av.tts ? 'on' : 'off'}`);
+          printMessage('system', `STT: ${av.stt ? 'on' : 'off'} | TTS: ${av.tts ? 'on' : 'off'}`);
         }
         return true;
       }
       case 'traits': {
         const d = engines.current.dna;
-        addMessage('system', `Drift: ${d.getTraitProfile()}`);
+        printMessage('system', `Drift: ${d.getTraitProfile()}`);
         return true;
       }
       case 'patch': {
         if (args[0] === 'quick' && args.length >= 4) {
           const file = args[1] || '';
           const ok = await engines.current.patch.quickPatch(file, args[2] || '', args.slice(3).join(' '));
-          addMessage('system', ok ? `✓ ${file}` : `✗ Anchor not found`);
-        } else { addMessage('system', 'Usage: /patch quick <file> "old" "new"'); }
+          printMessage('system', ok ? `✓ ${file}` : `✗ Anchor not found`);
+        } else { printMessage('system', 'Usage: /patch quick <file> "old" "new"'); }
         return true;
       }
       default: return false;
@@ -235,7 +241,8 @@ const TUI = () => {
     setLoading(true);
     setStatus('Thinking...');
 
-    setMessages(prev => [...prev, { role: 'user', content: value, timestamp: Date.now() }]);
+    // Print user message immediately to scrollback
+    printMessage('user', value);
 
     try {
       const { intent, memory, skills, evolution, llm, web, dna } = engines.current;
@@ -247,7 +254,7 @@ const TUI = () => {
       const pi = await intent.perceive(value);
       if (pi.isCommand) {
         const handled = await handleCommand(pi.commandName || '', pi.commandArgs || []);
-        if (!handled) addMessage('system', `Unknown: /${pi.commandName}`);
+        if (!handled) printMessage('system', `Unknown: /${pi.commandName}`);
         setStatus('Ready'); setLoading(false); return;
       }
 
@@ -261,15 +268,16 @@ const TUI = () => {
         (skills.getActiveContext() ? `\n\nSKILLS:\n${skills.getActiveContext()}` : '') + ctx;
 
       const response = await llm.generate({
-        systemPrompt: sysPrompt,
-        userPrompt: value,
+        systemPrompt: sysPrompt, userPrompt: value,
         messages: [
           ...mem.flatMap(m => [{ role: 'user', content: m.value.input }, { role: 'assistant', content: m.value.output }]),
           { role: 'user', content: value }
         ] as any
       });
 
-      setMessages(prev => [...prev, { role: 'assistant', content: response, timestamp: Date.now() }]);
+      // Print response to scrollback
+      printMessage('assistant', response);
+
       await memory.remember('interaction', { input: value, output: response });
       await dna.logInteraction();
       setDnaData({ ...dna.rawData });
@@ -277,7 +285,7 @@ const TUI = () => {
       setDnaData({ ...dna.rawData });
       setStatus('Ready');
     } catch (err: any) {
-      addMessage('system', `✗ ${err?.message || 'Unknown error'}`);
+      printMessage('system', `✗ ${err?.message || 'Unknown error'}`);
       setStatus('Error');
     } finally {
       setLoading(false);
@@ -288,106 +296,18 @@ const TUI = () => {
   if (!dnaData) {
     return (
       <Box flexDirection="column" padding={1}>
-        <Text color={C.accent} bold> ⚡ ULTIMATE </Text>
-        <Text color={C.muted}> Loading...</Text>
+        <Text color="cyan" bold> ⚡ ULTIMATE Loading...</Text>
       </Box>
     );
   }
 
-  const modeLabel = mode === 'chat' ? 'CHAT' : mode === 'museum' ? 'HISTORY' : 'BUILD';
-  const statusColor = status === 'Error' ? C.error : status === 'Ready' ? C.success : C.accent;
-
-  // Show last N messages that fit in the visible area
-  const visibleMessages = messages.slice(-Math.min(messages.length, msgAreaHeight));
-
   return (
-    <Box flexDirection="column" height={rows} width={cols}>
-      {/* ── Top bar ─────────────────────────────── */}
-      <Box flexDirection="row" paddingX={1} backgroundColor={C.headerBg} height={1}>
-        <Text bold color={C.fg}> ⚡ ULTIMATE </Text>
-        <Text color={C.dim}>v{dnaData.identity.version} │ </Text>
-        <Text color={C.accent}>{modeLabel}</Text>
-        <Spacer />
-        <Text color={statusColor}>● </Text>
-        <Text color={C.muted}>{status}</Text>
-      </Box>
-
-      <Box flexDirection="row" flexGrow={1}>
-        {/* ── Sidebar ───────────────────────────── */}
-        <Box flexDirection="column" width={sidebarW} backgroundColor={C.sidebarBg} borderStyle="single" borderColor={C.border} paddingX={1}>
-          <Box flexDirection="column" marginBottom={1}>
-            <Text bold color={C.muted}>ENTITY</Text>
-            <Text color={C.fg}> {dnaData.identity.currentForm} · v{dnaData.identity.version}</Text>
-            <Text color={C.dim}> {dnaData.mutations} mut · {dnaData.memory.interaction_count} msgs</Text>
-          </Box>
-          <Box flexDirection="column" marginBottom={1}>
-            <Text bold color={C.muted}>DRIFT</Text>
-            {Object.entries(dnaData.traits || {}).map(([trait, val]: [string, any]) => {
-              const filled = Math.round(val * 6);
-              const bar = '█'.repeat(filled) + '░'.repeat(6 - filled);
-              const color = val > 0.7 ? C.success : val < 0.3 ? C.error : C.warning;
-              return <Text key={trait} color={color}>{trait.substring(0, 5).padEnd(5)} {bar} {(val as number).toFixed(1)}</Text>;
-            })}
-          </Box>
-          {alerts.length > 0 && (
-            <Box flexDirection="column" marginBottom={1}>
-              <Text bold color={C.muted}>ALERTS</Text>
-              {alerts.map((a, i) => <Text key={i} color={C.warning}> {a.substring(0, 22)}...</Text>)}
-            </Box>
-          )}
-          <Spacer />
-          <Text color={C.dim}> TAB · /help</Text>
-        </Box>
-
-        {/* ── Main content ──────────────────────── */}
-        <Box flexDirection="column" flexGrow={1} borderStyle="single" borderColor={C.border}>
-          {mode === 'chat' && (
-            <Box flexDirection="column" flexGrow={1}>
-              <Box flexDirection="column" flexGrow={1} paddingX={1}>
-                {messages.length === 0 && (
-                  <Box flexDirection="column" marginTop={2}>
-                    <Text color={C.dim}> Ready. Type a message or /help</Text>
-                  </Box>
-                )}
-                {visibleMessages.map((msg, idx) => {
-                  const roleColor = msg.role === 'user' ? C.user : msg.role === 'system' ? C.system : C.ai;
-                  const roleIcon = msg.role === 'user' ? '>' : msg.role === 'system' ? '!' : '<';
-                  const roleName = msg.role === 'user' ? 'You' : msg.role === 'system' ? 'Sys' : 'ULT';
-                  return (
-                    <Box key={msg.timestamp || idx} flexDirection="column">
-                      <Text bold color={roleColor}> {roleIcon} {roleName}</Text>
-                      <Text color={C.fg} wrap="wrap">{msg.content}</Text>
-                    </Box>
-                  );
-                })}
-              </Box>
-              <Box borderStyle="single" borderColor={loading ? C.accent : C.border} paddingX={1} flexDirection="row" height={3}>
-                <Text color={C.accent}> ❯ </Text>
-                {loading ? <Spinner type="dots" /> : <TextInput value={input} onChange={setInput} onSubmit={handleSubmit} placeholder="Type a message..." />}
-              </Box>
-            </Box>
-          )}
-
-          {mode === 'museum' && (
-            <Box flexDirection="column" flexGrow={1} paddingX={1}>
-              <Text bold color={C.fg}> Evolution History</Text>
-              <Text color={C.dim}>────────────────────────────</Text>
-              {snapshots.length === 0 ? <Text color={C.muted}> No snapshots</Text> :
-                snapshots.map((s, i) => <Box key={i}><Text color={C.dim}> [{new Date(s.timestamp).toLocaleDateString()}] </Text><Text color={C.accent}>{s.reason}</Text></Box>)}
-            </Box>
-          )}
-
-          {mode === 'architect' && (
-            <Box flexDirection="column" flexGrow={1} paddingX={1}>
-              <Text bold color={C.fg}> Project Architect</Text>
-              <Text color={C.dim}>────────────────────────────</Text>
-              <Text color={C.muted}> /architect analyze · todo · next · status</Text>
-              {messages.slice(-15).filter(m => m.role === 'system').map((msg, i) => (
-                <Box key={i} flexDirection="column" marginTop={1}><Text color={C.fg}>{msg.content}</Text></Box>
-              ))}
-            </Box>
-          )}
-        </Box>
+    <Box flexDirection="column" borderStyle="single" borderColor="#333" paddingX={1}>
+      <Box flexDirection="row">
+        <Text color="#0070f3" bold> ❯ </Text>
+        {loading ? <Spinner type="dots" /> : (
+          <TextInput value={input} onChange={setInput} onSubmit={handleSubmit} placeholder="Type a message..." />
+        )}
       </Box>
     </Box>
   );
