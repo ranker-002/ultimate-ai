@@ -1,4 +1,5 @@
 import { DNA } from './dna.js';
+import { callModel, OpenRouter } from '@openrouter/agent';
 
 export interface LLMMessage {
   role: 'user' | 'assistant' | 'system';
@@ -20,10 +21,10 @@ export interface LLMProvider {
 
 class OpenRouterProvider implements LLMProvider {
   name = 'openrouter';
-  private apiKey: string;
+  private client: OpenRouter;
 
   constructor(apiKey: string) {
-    this.apiKey = apiKey;
+    this.client = new OpenRouter({ apiKey });
   }
 
   async generate(options: LLMGenerateOptions): Promise<string> {
@@ -33,28 +34,13 @@ class OpenRouterProvider implements LLMProvider {
         { role: 'user', content: options.userPrompt || '' }
     ];
 
-    const body = {
+    const result = await callModel(this.client, {
       model: options.model || 'qwen/qwen-32b-chat',
-      max_tokens: options.maxTokens || 4096,
-      messages
-    };
-
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`
-      },
-      body: JSON.stringify(body)
+      input: messages as any,
+      maxOutputTokens: options.maxTokens || 4096,
     });
 
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`OpenRouter error ${response.status}: ${err}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
+    return await result.getText();
   }
 }
 
@@ -104,15 +90,15 @@ export class LLMEngine {
 
   constructor() {
     const openRouterKey = process.env.OPENROUTER_API_KEY || '';
-    if (openRouterKey) {
-      this.providers['openrouter'] = new OpenRouterProvider(openRouterKey);
-    }
     
-    // Always add Ollama as a local option
+    // Default: OpenRouter
+    this.providers['openrouter'] = new OpenRouterProvider(openRouterKey);
+    
+    // Fallback: Ollama
     this.providers['ollama'] = new OllamaProvider();
     
-    // Load preference if DNA is available (will be set in boot)
-    this.activeProviderName = openRouterKey ? 'openrouter' : 'ollama';
+    // Default logic: prefer OpenRouter if key is present
+    this.activeProviderName = 'openrouter';
   }
 
   async generate(options: LLMGenerateOptions): Promise<string> {
@@ -120,7 +106,16 @@ export class LLMEngine {
     if (!provider) {
       throw new Error(`Provider ${this.activeProviderName} not configured.`);
     }
-    return provider.generate(options);
+    
+    try {
+      return await provider.generate(options);
+    } catch (err: any) {
+      if (this.activeProviderName === 'openrouter' && err.message.includes('API key')) {
+        console.log('⚠️ OpenRouter key missing or invalid. Falling back to local Ollama...');
+        return await this.providers['ollama']!.generate(options);
+      }
+      throw err;
+    }
   }
 
   setProvider(name: string) {
