@@ -1,8 +1,24 @@
-import { LLMEngine } from './llm_engine.js';
-
-const llm = new LLMEngine();
-
 export class WebPerception {
+  private isUnsafeUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.toLowerCase();
+      const blocked = [
+        'localhost', '127.0.0.1', '::1',
+        '0.0.0.0', '169.254.169.254',
+        'metadata.google.internal',
+        '10.', '192.168.', '172.16.', '172.17.', '172.18.',
+        '172.19.', '172.20.', '172.21.', '172.22.', '172.23.',
+        '172.24.', '172.25.', '172.26.', '172.27.', '172.28.',
+        '172.29.', '172.30.', '172.31.'
+      ];
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return true;
+      return blocked.some(b => host === b || host.startsWith(b));
+    } catch {
+      return true;
+    }
+  }
+
   async search(query: string): Promise<string> {
     console.log(`🌐 Searching the web for: ${query}`);
     try {
@@ -26,6 +42,9 @@ export class WebPerception {
 
   async readPage(url: string): Promise<string> {
     console.log(`📖 Reading page: ${url}`);
+    if (this.isUnsafeUrl(url)) {
+      return 'Access to internal/local URLs is blocked for security.';
+    }
     try {
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);

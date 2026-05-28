@@ -3,7 +3,7 @@ import { DNA } from './dna.js';
 import { SystemTools } from './system_tools.js';
 import { Transformer } from './transformer.js';
 
-const llm = new LLMEngine();
+const llm = LLMEngine.getInstance();
 const sys = new SystemTools();
 const transformer = new Transformer();
 

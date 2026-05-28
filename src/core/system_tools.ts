@@ -35,11 +35,15 @@ export class SystemTools {
     return await fs.readFile(fullPath, 'utf-8');
   }
 
-  // Write a file
+  // Write a file (with path traversal protection)
   async writeFile(filePath: string, content: string) {
     const fullPath = path.isAbsolute(filePath) ? filePath : path.join(ROOT, filePath);
-    await fs.mkdir(path.dirname(fullPath), { recursive: true });
-    await fs.writeFile(fullPath, content, 'utf-8');
+    const resolved = path.resolve(fullPath);
+    if (!resolved.startsWith(path.resolve(ROOT))) {
+      throw new Error(`Path traversal blocked: ${filePath} resolves outside project root`);
+    }
+    await fs.mkdir(path.dirname(resolved), { recursive: true });
+    await fs.writeFile(resolved, content, 'utf-8');
   }
 
   // Read entire codebase for context window

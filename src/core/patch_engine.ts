@@ -102,7 +102,7 @@ export class PatchEngine {
   private async addToFile(filePath: string, op: PatchOperation): Promise<void> {
     const content = await fs.readFile(filePath, 'utf-8');
     const appended = content + '\n' + (op.content || '');
-    await fs.writeFile(filePath, appended);
+    await this.atomicWrite(filePath, appended);
   }
 
   private async removeFromFile(filePath: string, op: PatchOperation): Promise<void> {
@@ -111,7 +111,7 @@ export class PatchEngine {
     const anchorIdx = lines.findIndex(l => l.includes(op.anchor));
     if (anchorIdx === -1) throw new Error(`Anchor not found: "${op.anchor}"`);
     lines.splice(anchorIdx, 1);
-    await fs.writeFile(filePath, lines.join('\n'));
+    await this.atomicWrite(filePath, lines.join('\n'));
   }
 
   private async replaceInFile(filePath: string, op: PatchOperation): Promise<void> {
@@ -120,7 +120,7 @@ export class PatchEngine {
       throw new Error(`Anchor not found: "${op.anchor}"`);
     }
     const updated = content.replace(op.anchor, op.content || '');
-    await fs.writeFile(filePath, updated);
+    await this.atomicWrite(filePath, updated);
   }
 
   private async insertAfter(filePath: string, op: PatchOperation): Promise<void> {
@@ -130,7 +130,7 @@ export class PatchEngine {
     if (anchorIdx === -1) throw new Error(`Anchor not found: "${op.anchor}"`);
     const insertLines = (op.content || '').split('\n');
     lines.splice(anchorIdx + 1, 0, ...insertLines);
-    await fs.writeFile(filePath, lines.join('\n'));
+    await this.atomicWrite(filePath, lines.join('\n'));
   }
 
   private async insertBefore(filePath: string, op: PatchOperation): Promise<void> {
@@ -140,7 +140,18 @@ export class PatchEngine {
     if (anchorIdx === -1) throw new Error(`Anchor not found: "${op.anchor}"`);
     const insertLines = (op.content || '').split('\n');
     lines.splice(anchorIdx, 0, ...insertLines);
-    await fs.writeFile(filePath, lines.join('\n'));
+    await this.atomicWrite(filePath, lines.join('\n'));
+  }
+
+  private async atomicWrite(filePath: string, content: string): Promise<void> {
+    const tmpFile = `${filePath}.tmp.${Date.now()}`;
+    try {
+      await fs.writeFile(tmpFile, content);
+      await fs.rename(tmpFile, filePath);
+    } catch (err) {
+      await fs.unlink(tmpFile).catch(() => {});
+      throw err;
+    }
   }
 
   async generateDiff(oldContent: string, newContent: string, fileName: string = 'file'): Promise<string> {

@@ -1,7 +1,7 @@
 import { LLMEngine } from './llm_engine.js';
 import { DNA, type DNAData } from './dna.js';
 
-const llm = new LLMEngine();
+const llm = LLMEngine.getInstance();
 const EVOLUTION_THRESHOLD = 0.7;
 
 export interface InteractionRecord {

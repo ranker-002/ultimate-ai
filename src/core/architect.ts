@@ -7,6 +7,9 @@ import { SystemTools } from './system_tools.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
 
+const llm = LLMEngine.getInstance();
+const sys = new SystemTools();
+
 export interface ProjectTask {
   id: string;
   title: string;
@@ -31,9 +34,6 @@ export interface ProjectContext {
 
 const TODO_PATH = path.join(ROOT, 'TODO.md');
 const PROJECT_META_PATH = path.join(ROOT, '.architect.json');
-
-const llm = new LLMEngine();
-const sys = new SystemTools();
 
 export class Architect {
   private tasks: ProjectTask[] = [];

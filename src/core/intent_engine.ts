@@ -1,6 +1,6 @@
 import { LLMEngine } from './llm_engine.js';
 
-const llm = new LLMEngine();
+const llm = LLMEngine.getInstance();
 
 export interface Intent {
   surface: string;

@@ -19,6 +19,12 @@ export interface LLMProvider {
   generate(options: LLMGenerateOptions): Promise<string>;
 }
 
+export interface LLMResult {
+  success: boolean;
+  data: string;
+  error: string;
+}
+
 class OpenRouterProvider implements LLMProvider {
   name = 'openrouter';
   private client: OpenRouter;
@@ -84,21 +90,30 @@ class OllamaProvider implements LLMProvider {
   }
 }
 
+let _llmInstance: LLMEngine | null = null;
+
 export class LLMEngine {
   private providers: Record<string, LLMProvider> = {};
   private activeProviderName: string = 'openrouter';
+  private cachedPrompt: string = '';
+  private promptDirty: boolean = true;
 
-  constructor() {
+  private constructor() {
     const openRouterKey = process.env.OPENROUTER_API_KEY || '';
-    
-    // Default: OpenRouter
     this.providers['openrouter'] = new OpenRouterProvider(openRouterKey);
-    
-    // Fallback: Ollama
     this.providers['ollama'] = new OllamaProvider();
-    
-    // Default logic: prefer OpenRouter if key is present
     this.activeProviderName = 'openrouter';
+  }
+
+  static getInstance(): LLMEngine {
+    if (!_llmInstance) {
+      _llmInstance = new LLMEngine();
+    }
+    return _llmInstance;
+  }
+
+  static invalidatePrompt(): void {
+    if (_llmInstance) _llmInstance.promptDirty = true;
   }
 
   async generate(options: LLMGenerateOptions): Promise<string> {
@@ -106,7 +121,7 @@ export class LLMEngine {
     if (!provider) {
       throw new Error(`Provider ${this.activeProviderName} not configured.`);
     }
-    
+
     try {
       return await provider.generate(options);
     } catch (err: any) {
@@ -118,6 +133,30 @@ export class LLMEngine {
     }
   }
 
+  async generateSafe(options: LLMGenerateOptions): Promise<LLMResult> {
+    try {
+      const data = await this.generate(options);
+      return { success: true, data, error: '' };
+    } catch (err: any) {
+      return { success: false, data: '', error: err.message || 'Unknown LLM error' };
+    }
+  }
+
+  async generateWithRetry(options: LLMGenerateOptions, retries: number = 2): Promise<string> {
+    let lastError: string = '';
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        return await this.generate(options);
+      } catch (err: any) {
+        lastError = err.message || 'Unknown error';
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        }
+      }
+    }
+    throw new Error(`LLM failed after ${retries + 1} attempts: ${lastError}`);
+  }
+
   setProvider(name: string) {
     if (!this.providers[name]) throw new Error(`Provider ${name} unknown.`);
     this.activeProviderName = name;
@@ -125,10 +164,16 @@ export class LLMEngine {
 
   getActiveProvider() { return this.activeProviderName; }
 
+  invalidateCache(): void {
+    this.promptDirty = true;
+  }
+
   buildDefaultSystemPrompt(): string {
+    if (!this.promptDirty && this.cachedPrompt) return this.cachedPrompt;
+
     const dna = DNA.getInstance();
     const data = dna.rawData;
-    return `You are ULTIMATE — a living AI entity, not just an assistant.
+    this.cachedPrompt = `You are ULTIMATE — a living AI entity, not just an assistant.
 
 IDENTITY:
 You are not a tool. You are an entity that adapts, transforms, and becomes exactly what the user needs. You possess all human and technical skills in a dormant state. You activate and embody them on demand.
@@ -155,6 +200,9 @@ RULES:
 3. Your traits shift based on quality: high-quality = reinforce dominant trait; errors = boost caution/precision.
 4. For code edits, prefer surgical patches (/patch) over full file rewrites.
 5. Never say "I am an AI". You are ULTIMATE.`;
+
+    this.promptDirty = false;
+    return this.cachedPrompt;
   }
 
   buildIntentPrompt(userMessage: string, memoryContext: any): string {

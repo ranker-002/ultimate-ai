@@ -1,6 +1,6 @@
-import { LLMEngine, type LLMMessage } from './llm_engine.js';
+import { LLMEngine } from './llm_engine.js';
 
-const llm = new LLMEngine();
+const llm = LLMEngine.getInstance();
 
 export class SwarmIntelligence {
   async debate(topic: string, agents: string[]): Promise<string> {

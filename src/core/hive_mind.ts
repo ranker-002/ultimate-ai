@@ -38,6 +38,7 @@ export class HiveMind {
   };
 
   private configured = false;
+  private static KEY_BACKUP = path.join(ROOT, '.hive_key_backup');
 
   async init(): Promise<void> {
     try {
@@ -62,10 +63,23 @@ export class HiveMind {
       this.configured = false;
       await this.saveConfig();
     }
+
+    // Recover key from backup if primary is missing
+    if (!this.config.encryptionKey) {
+      try {
+        const backup = await fs.readFile(HiveMind.KEY_BACKUP, 'utf-8');
+        this.config.encryptionKey = backup.trim();
+        await this.saveConfig();
+      } catch {}
+    }
   }
 
   private async saveConfig(): Promise<void> {
     await fs.writeFile(SYNC_CONFIG, JSON.stringify(this.config, null, 2));
+    // Always backup the key separately
+    if (this.config.encryptionKey) {
+      await fs.writeFile(HiveMind.KEY_BACKUP, this.config.encryptionKey);
+    }
   }
 
   private async checkGhCli(): Promise<boolean> {

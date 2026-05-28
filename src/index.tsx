@@ -55,6 +55,9 @@ const TUI = () => {
     architect: Architect;
   } | null>(null);
 
+  const processingLock = useRef(false);
+  const bgRef = useRef<BackgroundEvolution | null>(null);
+
   useEffect(() => {
     const init = async () => {
       await bootstrap();
@@ -83,7 +86,7 @@ const TUI = () => {
         memory,
         skills: new SkillActivator(),
         evolution: new EvolutionLoop(),
-        llm: new LLMEngine(),
+        llm: LLMEngine.getInstance(),
         web: new WebPerception(),
         omni,
         dna,
@@ -98,11 +101,24 @@ const TUI = () => {
       setStatus('Ready');
 
       const bg = new BackgroundEvolution();
+      bgRef.current = bg;
       bg.start();
 
-      setInterval(() => {
-        setAlerts(engines.current?.omni.getRecentAlerts() || []);
-      }, 2000);
+      // Event-driven alerts (no polling)
+      omni.onAlert((alert) => {
+        setAlerts(prev => [...prev.slice(-4), alert]);
+      });
+
+      // Graceful shutdown
+      const shutdown = async () => {
+        console.log('\n⚡ ULTIMATE entering standby...');
+        omni.stop();
+        bgRef.current?.stop();
+        try { await dna.save(); } catch {}
+        process.exit(0);
+      };
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
     };
 
     init();
@@ -303,7 +319,8 @@ const TUI = () => {
   };
 
   const handleSubmit = async (value: string) => {
-    if (!value || loading || !engines.current) return;
+    if (!value || loading || !engines.current || processingLock.current) return;
+    processingLock.current = true;
     setInput('');
     setLoading(true);
     setStatus('Thinking...');
@@ -390,6 +407,7 @@ const TUI = () => {
       setStatus('Error');
     } finally {
       setLoading(false);
+      processingLock.current = false;
     }
   };
 

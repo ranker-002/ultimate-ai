@@ -56,13 +56,43 @@ export class DNA {
     if (_instance) return _instance;
     try {
       const raw = await fs.readFile(DNA_PATH, 'utf-8');
-      _instance = new DNA(JSON.parse(raw));
+      const parsed = JSON.parse(raw);
+      const migrated = DNA.migrate(parsed);
+      _instance = new DNA(migrated);
+      await _instance.save();
       return _instance;
     } catch (error) {
-      // If file doesn't exist, we might need to bootstrap it.
-      // For now, we'll throw or expect bootstrap to have run.
       throw new Error(`DNA file not found at ${DNA_PATH}. Run bootstrap first.`);
     }
+  }
+
+  private static migrate(data: any): DNAData {
+    const defaults: DNAData = {
+      identity: { name: 'ULTIMATE', version: '1.0.0', birth: Date.now(), currentForm: 'terminal-cli' },
+      traits: { logic: 0.5, creativity: 0.5, caution: 0.5, empathy: 0.5, ambition: 0.5, precision: 0.5 },
+      traitHistory: [],
+      mutations: 0,
+      evolution_log: [],
+      memory: { user_preferences: {}, learned_patterns: [], active_skills: [], transformation_history: [], interaction_count: 0 },
+      capabilities: { self_modify: true, learn_in_realtime: true, skill_acquisition: 'unlimited', form_limit: 'none' }
+    };
+
+    const migrated: DNAData = {
+      identity: { ...defaults.identity, ...(data.identity || {}) },
+      traits: { ...defaults.traits, ...(data.traits || {}) },
+      traitHistory: Array.isArray(data.traitHistory) ? data.traitHistory : defaults.traitHistory,
+      mutations: typeof data.mutations === 'number' ? data.mutations : defaults.mutations,
+      evolution_log: Array.isArray(data.evolution_log) ? data.evolution_log : defaults.evolution_log,
+      memory: { ...defaults.memory, ...(data.memory || {}) },
+      capabilities: { ...defaults.capabilities, ...(data.capabilities || {}) }
+    };
+
+    // Clamp traits to [0, 1]
+    for (const key of Object.keys(migrated.traits) as Array<keyof typeof migrated.traits>) {
+      migrated.traits[key] = Math.max(0, Math.min(1, migrated.traits[key]));
+    }
+
+    return migrated;
   }
 
   static getInstance(): DNA {

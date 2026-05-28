@@ -21,9 +21,13 @@ export class GhostSandbox {
     await this.prepareGhost();
 
     for (const [filePath, content] of Object.entries(files)) {
-      const ghostPath = path.join(GHOST_DIR, filePath);
-      await fs.mkdir(path.dirname(ghostPath), { recursive: true });
-      await fs.writeFile(ghostPath, content);
+      const resolved = path.resolve(path.join(GHOST_DIR, filePath));
+      if (!resolved.startsWith(path.resolve(GHOST_DIR))) {
+        console.warn(`⚠️ Ghost: Skipping path traversal attempt: ${filePath}`);
+        continue;
+      }
+      await fs.mkdir(path.dirname(resolved), { recursive: true });
+      await fs.writeFile(resolved, content);
     }
 
     // Try to build in ghost

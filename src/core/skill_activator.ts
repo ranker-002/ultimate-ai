@@ -9,7 +9,7 @@ const ROOT = path.join(__dirname, '..', '..');
 const SKILLS_DIR = path.join(ROOT, 'skills');
 const REGISTRY_PATH = path.join(SKILLS_DIR, 'registry.json');
 
-const llm = new LLMEngine();
+const llm = LLMEngine.getInstance();
 
 export interface SkillDef {
   name: string;
