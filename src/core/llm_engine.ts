@@ -32,8 +32,7 @@ class OpenRouterProvider implements LLMProvider {
     'nvidia/nemotron-3-super-120b-a12b:free',
     'deepseek/deepseek-v4-flash:free',
     'google/gemma-4-26b-a4b-it:free',
-    'moonshotai/kimi-k2.6:free',
-    'qwen/qwen3.7-max'
+    'moonshotai/kimi-k2.6:free'
   ];
 
   constructor(apiKey: string) {
@@ -62,11 +61,8 @@ class OpenRouterProvider implements LLMProvider {
         return await result.getText();
       } catch (err: any) {
         lastError = err.message || 'Unknown error';
-        // If rate limited, try next model
-        if (lastError.includes('429') || lastError.includes('rate') || lastError.includes('Provider returned error')) {
-          continue;
-        }
-        throw err;
+        // Retry with next model on any provider error (rate limit, auth, etc.)
+        continue;
       }
     }
     throw new Error(`All models failed. Last error: ${lastError}`);
@@ -149,18 +145,12 @@ export class LLMEngine {
       throw new Error(`Provider ${this.activeProviderName} not configured.`);
     }
 
-    const timeout = 30000;
-
     try {
-      const result = await Promise.race([
-        provider.generate(options),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('LLM request timed out (30s). Check your API key and network.')), timeout);
-        })
-      ]);
-      return result;
+      return await provider.generate(options);
     } catch (err: any) {
-      if (this.activeProviderName === 'openrouter' && err.message?.includes('API key')) {
+      const msg = err.message || '';
+      // Only fallback on actual auth errors, not rate limits
+      if (this.activeProviderName === 'openrouter' && msg.includes('401')) {
         console.log('⚠️ OpenRouter key invalid. Falling back to local Ollama...');
         return await this.providers['ollama']!.generate(options);
       }
