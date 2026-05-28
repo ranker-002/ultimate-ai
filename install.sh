@@ -95,15 +95,23 @@ echo ""
 info "Installing ULTIMATE to ${INSTALL_DIR}..."
 
 if [ -d "$INSTALL_DIR" ]; then
-  warn "Existing installation found. Updating..."
-  cd "$INSTALL_DIR"
-  git pull --ff-only 2>/dev/null || {
-    warn "Pull failed. Re-cloning..."
-    cd "$HOME"
+  # Check if it's the correct repo
+  CURRENT_REMOTE=$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null || echo "")
+  if [ "$CURRENT_REMOTE" != "$REPO" ]; then
+    warn "Wrong repo at $INSTALL_DIR ($CURRENT_REMOTE). Re-cloning..."
     rm -rf "$INSTALL_DIR"
     git clone --depth 1 "$REPO" "$INSTALL_DIR"
+  else
+    warn "Existing installation found. Updating..."
     cd "$INSTALL_DIR"
-  }
+    git pull --ff-only 2>/dev/null || {
+      warn "Pull failed. Re-cloning..."
+      cd "$HOME"
+      rm -rf "$INSTALL_DIR"
+      git clone --depth 1 "$REPO" "$INSTALL_DIR"
+    }
+  fi
+  cd "$INSTALL_DIR"
 else
   git clone --depth 1 "$REPO" "$INSTALL_DIR"
   cd "$INSTALL_DIR"
