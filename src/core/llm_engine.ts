@@ -28,25 +28,48 @@ export interface LLMResult {
 class OpenRouterProvider implements LLMProvider {
   name = 'openrouter';
   private client: OpenRouter;
+  private static FALLBACK_MODELS = [
+    'nvidia/nemotron-3-super-120b-a12b:free',
+    'deepseek/deepseek-v4-flash:free',
+    'google/gemma-4-26b-a4b-it:free',
+    'moonshotai/kimi-k2.6:free',
+    'qwen/qwen3.7-max'
+  ];
 
   constructor(apiKey: string) {
     this.client = new OpenRouter({ apiKey });
   }
 
   async generate(options: LLMGenerateOptions): Promise<string> {
+    const models = options.model
+      ? [options.model, ...OpenRouterProvider.FALLBACK_MODELS]
+      : OpenRouterProvider.FALLBACK_MODELS;
+
     const systemPrompt = options.systemPrompt || '';
     const messages = options.messages || [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: options.userPrompt || '' }
     ];
 
-    const result = await callModel(this.client, {
-      model: options.model || 'deepseek/deepseek-v4-flash:free',
-      input: messages as any,
-      maxOutputTokens: options.maxTokens || 4096,
-    });
-
-    return await result.getText();
+    let lastError: string = '';
+    for (const model of models) {
+      try {
+        const result = await callModel(this.client, {
+          model,
+          input: messages as any,
+          maxOutputTokens: options.maxTokens || 4096,
+        });
+        return await result.getText();
+      } catch (err: any) {
+        lastError = err.message || 'Unknown error';
+        // If rate limited, try next model
+        if (lastError.includes('429') || lastError.includes('rate') || lastError.includes('Provider returned error')) {
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error(`All models failed. Last error: ${lastError}`);
   }
 }
 
