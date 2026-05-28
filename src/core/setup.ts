@@ -71,16 +71,28 @@ function askQuestion(query: string): Promise<string> {
 }
 
 export async function setupWizard(): Promise<void> {
-  // Check if setup was already done
-  try {
-    await fs.access(SETUP_DONE);
-    return; // Setup already completed
-  } catch {}
-
-  // Check if API key is already set
+  // If API key is already set, no need for wizard
   if (process.env.OPENROUTER_API_KEY) {
-    await fs.writeFile(SETUP_DONE, Date.now().toString());
     return;
+  }
+
+  // Check if key exists in shell profiles
+  const home = process.env.HOME || '';
+  const profiles = [
+    path.join(home, '.bashrc'),
+    path.join(home, '.zshrc'),
+    path.join(home, '.profile'),
+    path.join(home, '.bash_profile')
+  ];
+  for (const profile of profiles) {
+    try {
+      const content = await fs.readFile(profile, 'utf-8');
+      const match = content.match(/export\s+OPENROUTER_API_KEY=["']?([^"'\s]+)["']?/);
+      if (match?.[1]) {
+        process.env.OPENROUTER_API_KEY = match[1];
+        return;
+      }
+    } catch {}
   }
 
   console.clear();
