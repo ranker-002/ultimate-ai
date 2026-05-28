@@ -17,8 +17,18 @@ export async function bootstrap() {
     await fs.mkdir(dir, { recursive: true });
   }
 
-  // Check if first launch
-  const isFirstLaunch = !(await fileExists(dnaPath));
+  // Check if first launch (missing OR empty/corrupt file)
+  let isFirstLaunch = false;
+  try {
+    const stat = await fs.stat(dnaPath);
+    if (stat.size === 0) isFirstLaunch = true;
+    else {
+      const content = await fs.readFile(dnaPath, 'utf-8');
+      if (!content.trim().startsWith('{')) isFirstLaunch = true;
+    }
+  } catch {
+    isFirstLaunch = true;
+  }
 
   if (isFirstLaunch) {
     console.log('⚡ First Launch — Initializing DNA...');
