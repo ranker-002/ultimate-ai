@@ -139,10 +139,10 @@ const TUI = () => {
       setDnaData(dna.rawData);
       setStatus('Ready');
 
-      // Print welcome using dna directly (setState is async)
-      print('');
-      printHeader(dna.rawData, modeRef.current, 'Ready');
-      print(`${C.dim}  Type a message or /help for commands${C.reset}`);
+      // Clear terminal and print welcome
+      process.stdout.write('\x1b[2J\x1b[H');
+      print(`${C.bold}${C.cyan} ⚡ ULTIMATE ${C.reset}${C.dim}v${dna.rawData.identity.version}${C.reset}`);
+      print(`${C.dim}  Ready. Type a message or /help${C.reset}`);
       print('');
 
       const bg = new BackgroundEvolution();
