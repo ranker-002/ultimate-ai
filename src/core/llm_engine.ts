@@ -28,11 +28,17 @@ export interface LLMResult {
 class OpenRouterProvider implements LLMProvider {
   name = 'openrouter';
   private client: OpenRouter;
+  // Tested working free models (2026-05-28)
   private static FALLBACK_MODELS = [
+    'openai/gpt-oss-120b:free',
     'nvidia/nemotron-3-super-120b-a12b:free',
-    'deepseek/deepseek-v4-flash:free',
-    'google/gemma-4-26b-a4b-it:free',
-    'moonshotai/kimi-k2.6:free'
+    'moonshotai/kimi-k2.6:free',
+    'nvidia/nemotron-nano-9b-v2:free',
+    'openai/gpt-oss-20b:free',
+    'nvidia/nemotron-3-nano-30b-a3b:free',
+    'nvidia/nemotron-nano-12b-v2-vl:free',
+    'poolside/laguna-m.1:free',
+    'poolside/laguna-xs.2:free'
   ];
 
   constructor(apiKey: string) {
@@ -58,12 +64,15 @@ class OpenRouterProvider implements LLMProvider {
           input: messages as any,
           maxOutputTokens: options.maxTokens || 4096,
         });
-        return await result.getText();
+        const text = await result.getText();
+        // Skip empty responses
+        if (text && text.trim().length > 0) {
+          return text;
+        }
       } catch (err: any) {
         lastError = err.message || 'Unknown error';
-        // Retry with next model on any provider error (rate limit, auth, etc.)
-        continue;
       }
+      // Try next model
     }
     throw new Error(`All models failed. Last error: ${lastError}`);
   }
