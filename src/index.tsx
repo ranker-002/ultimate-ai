@@ -445,7 +445,7 @@ const TUI = () => {
         {/* ── Sidebar ───────────────────────────── */}
         <Box
           flexDirection="column"
-          width={32}
+          width={28}
           backgroundColor={C.sidebarBg}
           borderStyle="single"
           borderColor={C.border}
@@ -454,20 +454,20 @@ const TUI = () => {
           {/* Entity */}
           <Box flexDirection="column" marginBottom={1}>
             <Text bold color={C.muted}>ENTITY</Text>
-            <Text color={C.fg}> {dnaData.identity.currentForm}</Text>
-            <Text color={C.dim}> {dnaData.mutations} mutations · {dnaData.memory.interaction_count} msgs</Text>
+            <Text color={C.fg}> {dnaData.identity.currentForm} · v{dnaData.identity.version}</Text>
+            <Text color={C.dim}> {dnaData.mutations} mut · {dnaData.memory.interaction_count} msgs</Text>
           </Box>
 
           {/* Traits */}
           <Box flexDirection="column" marginBottom={1}>
             <Text bold color={C.muted}>DRIFT</Text>
             {Object.entries(dnaData.traits || {}).map(([trait, val]: [string, any]) => {
-              const filled = Math.round(val * 8);
-              const bar = '█'.repeat(filled) + '░'.repeat(8 - filled);
+              const filled = Math.round(val * 6);
+              const bar = '█'.repeat(filled) + '░'.repeat(6 - filled);
               const color = val > 0.7 ? C.success : val < 0.3 ? C.error : C.warning;
               return (
                 <Text key={trait} color={color}>
-                  {trait.substring(0, 7).padEnd(7)} {bar} {(val as number).toFixed(2)}
+                  {trait.substring(0, 5).padEnd(5)} {bar} {(val as number).toFixed(1)}
                 </Text>
               );
             })}
@@ -478,7 +478,7 @@ const TUI = () => {
             <Box flexDirection="column" marginBottom={1}>
               <Text bold color={C.muted}>ALERTS</Text>
               {alerts.map((a, i) => (
-                <Text key={i} color={C.warning}> {a.substring(0, 28)}...</Text>
+                <Text key={i} color={C.warning}> {a.substring(0, 24)}...</Text>
               ))}
             </Box>
           )}
@@ -487,14 +487,14 @@ const TUI = () => {
           {dnaData.memory.active_skills.length > 0 && (
             <Box flexDirection="column" marginBottom={1}>
               <Text bold color={C.muted}>SKILLS</Text>
-              {dnaData.memory.active_skills.slice(-4).map((s: string) => (
+              {dnaData.memory.active_skills.slice(-3).map((s: string) => (
                 <Text key={s} color={C.dim}> {s}</Text>
               ))}
             </Box>
           )}
 
           <Spacer />
-          <Text color={C.dim}> TAB cycle · /help</Text>
+          <Text color={C.dim}> TAB · /help</Text>
         </Box>
 
         {/* ── Main content ──────────────────────── */}
