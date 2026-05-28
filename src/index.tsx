@@ -28,6 +28,27 @@ interface Message {
   timestamp: number;
 }
 
+// Vercel-style color palette
+const C = {
+  bg: 'black',
+  fg: '#ededed',
+  muted: '#666666',
+  dim: '#444444',
+  accent: '#0070f3',
+  accentHover: '#0060df',
+  success: '#0cce6b',
+  error: '#ee0000',
+  warning: '#f5a623',
+  border: '#333333',
+  borderLight: '#444444',
+  user: '#0070f3',
+  ai: '#0cce6b',
+  system: '#f5a623',
+  headerBg: '#111111',
+  sidebarBg: '#0a0a0a',
+  inputBg: '#111111',
+};
+
 const TUI = () => {
   const { exit } = useApp();
   const [mode, setMode] = useState<'chat' | 'museum' | 'architect'>('chat');
@@ -38,6 +59,7 @@ const TUI = () => {
   const [status, setStatus] = useState('Initializing...');
   const [alerts, setAlerts] = useState<string[]>([]);
   const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [startTime] = useState(Date.now());
 
   const engines = useRef<{
     intent: IntentEngine;
@@ -105,14 +127,11 @@ const TUI = () => {
       bgRef.current = bg;
       bg.start();
 
-      // Event-driven alerts (no polling)
       omni.onAlert((alert) => {
         setAlerts(prev => [...prev.slice(-4), alert]);
       });
 
-      // Graceful shutdown
       const shutdown = async () => {
-        console.log('\n⚡ ULTIMATE entering standby...');
         omni.stop();
         bgRef.current?.stop();
         try { await dna.save(); } catch {}
@@ -125,7 +144,7 @@ const TUI = () => {
     init();
   }, []);
 
-  useInput((input, key) => {
+  useInput((_, key) => {
     if (key.tab) {
       setMode(prev => {
         if (prev === 'chat') return 'museum';
@@ -159,27 +178,29 @@ const TUI = () => {
     const { oracle, hive, voice, architect, dna } = engines.current;
 
     switch (cmd) {
-      case 'quit':
-        exit();
-        return true;
-
-      case 'clear':
-        setMessages([]);
-        return true;
+      case 'quit': exit(); return true;
+      case 'clear': setMessages([]); return true;
 
       case 'status': {
+        const uptime = Math.floor((Date.now() - startTime) / 1000);
         const status = [
-          `⚡ ULTIMATE v${dna.rawData.identity.version}`,
-          `Form: ${dna.rawData.identity.currentForm}`,
-          `Mutations: ${dna.rawData.mutations}`,
-          `Interactions: ${dna.rawData.memory.interaction_count}`,
-          `Traits: ${dna.getTraitProfile()}`,
-          `Dominant Trait: ${dna.getDominantTrait()}`,
-          '',
-          `👁️ Oracle: ${oracle.getScreenshotCount()} captures`,
-          `🔒 Hive: ${(await hive.getStatus()).configured ? 'synced' : 'not configured'}`,
-          `🎤 Voice: STT=${voice.isAvailable().stt}, TTS=${voice.isAvailable().tts}`,
-          `📋 Architect: ${architect.getTasks().length} tasks`
+          ``,
+          `  ULTIMATE v${dna.rawData.identity.version}`,
+          `  ─────────────────────────────────`,
+          `  Form       ${dna.rawData.identity.currentForm}`,
+          `  Mutations  ${dna.rawData.mutations}`,
+          `  Memory     ${dna.rawData.memory.interaction_count} interactions`,
+          `  Traits     ${dna.getTraitProfile()}`,
+          `  Dominant   ${dna.getDominantTrait()}`,
+          ``,
+          `  Systems`,
+          `  ─────────────────────────────────`,
+          `  Oracle     ${oracle.getScreenshotCount()} captures`,
+          `  Hive       ${(await hive.getStatus()).configured ? 'synced' : 'offline'}`,
+          `  Voice      STT:${voice.isAvailable().stt ? 'on' : 'off'} TTS:${voice.isAvailable().tts ? 'on' : 'off'}`,
+          `  Architect  ${architect.getTasks().length} tasks`,
+          `  Uptime     ${Math.floor(uptime / 60)}m ${uptime % 60}s`,
+          ``
         ].join('\n');
         addMessage('system', status);
         return true;
@@ -187,80 +208,85 @@ const TUI = () => {
 
       case 'help': {
         const help = [
-          'Commands:',
-          '  /quit              - Exit ULTIMATE',
-          '  /clear             - Clear chat',
-          '  /status            - Full entity status',
-          '  /screenshot        - Capture screen',
-          '  /screenshot terminal - Capture terminal',
-          '  /hive push         - Sync DNA+Memory to GitHub Gist',
-          '  /hive pull         - Pull sync from Gist',
-          '  /hive status       - Sync status',
-          '  /architect analyze - Analyze project',
-          '  /architect todo    - Generate TODO.md',
-          '  /architect next    - Suggest next task',
-          '  /architect status  - Project status',
-          '  /voice listen      - Voice input (STT)',
-          '  /voice say <text>  - Speak text (TTS)',
-          '  /traits            - Show Neural Drift profile',
-          '  /patch quick <file> - Quick surgical edit'
+          ``,
+          `  Commands`,
+          `  ─────────────────────────────────`,
+          `  /quit                Exit`,
+          `  /clear               Clear chat`,
+          `  /status              System status`,
+          `  /help                Show this`,
+          ``,
+          `  Vision`,
+          `  ─────────────────────────────────`,
+          `  /screenshot          Capture screen`,
+          `  /screenshot terminal Capture terminal`,
+          ``,
+          `  Sync`,
+          `  ─────────────────────────────────`,
+          `  /hive push           Push to cloud`,
+          `  /hive pull           Pull from cloud`,
+          `  /hive status         Sync status`,
+          ``,
+          `  Build`,
+          `  ─────────────────────────────────`,
+          `  /architect analyze   Analyze project`,
+          `  /architect todo      Generate TODO`,
+          `  /architect next      Next task`,
+          `  /architect status    Project status`,
+          ``,
+          `  Voice`,
+          `  ─────────────────────────────────`,
+          `  /voice listen        Voice input`,
+          `  /voice say <text>    Speak text`,
+          ``,
+          `  DNA`,
+          `  ─────────────────────────────────`,
+          `  /traits              Drift profile`,
+          `  /patch quick <f>     Surgical edit`,
+          ``
         ].join('\n');
         addMessage('system', help);
         return true;
       }
 
       case 'screenshot': {
-        const mode = args[0] || 'screen';
+        const m = args[0] || 'screen';
         setStatus('Capturing...');
-        const result = mode === 'terminal'
-          ? await oracle.captureTerminal()
-          : await oracle.captureScreen();
-        if (result.success) {
-          addMessage('system', `📸 Screenshot saved: ${result.filePath}`);
-        } else {
-          addMessage('system', `❌ Screenshot failed: ${result.error}`);
-        }
+        const result = m === 'terminal' ? await oracle.captureTerminal() : await oracle.captureScreen();
+        addMessage('system', result.success ? `✓ Saved: ${result.filePath}` : `✗ Failed: ${result.error}`);
         return true;
       }
 
       case 'hive': {
         const action = args[0] || 'status';
         if (action === 'push') {
-          setStatus('Syncing to cloud...');
+          setStatus('Syncing...');
           const result = await hive.push();
           addMessage('system', result.message);
         } else if (action === 'pull') {
-          setStatus('Pulling from cloud...');
+          setStatus('Pulling...');
           const result = await hive.pull();
           addMessage('system', result.message);
         } else {
-          const status = await hive.getStatus();
-          addMessage('system', [
-            `🔒 Hive Mind Status`,
-            `Configured: ${status.configured}`,
-            `Device: ${status.device}`,
-            status.gistId ? `Gist: ${status.gistId}` : '',
-            status.lastSync ? `Last sync: ${status.lastSync}` : ''
-          ].filter(Boolean).join('\n'));
+          const s = await hive.getStatus();
+          addMessage('system', `Hive: ${s.configured ? 'synced' : 'offline'} | Device: ${s.device}${s.lastSync ? ` | Last: ${s.lastSync}` : ''}`);
         }
         return true;
       }
 
       case 'architect': {
         const action = args[0] || 'status';
-        setStatus('Architect working...');
+        setStatus('Working...');
         if (action === 'analyze') {
           const ctx = await architect.analyzeProject();
-          addMessage('system', `📋 Project: ${ctx.name}\nPhase: ${ctx.currentPhase}\nStack: ${ctx.techStack.join(', ')}`);
+          addMessage('system', `Project: ${ctx.name}\nPhase: ${ctx.currentPhase}\nStack: ${ctx.techStack.join(', ')}`);
         } else if (action === 'todo') {
           const todo = await architect.generateTODO();
-          addMessage('system', `✅ TODO.md generated:\n${todo.substring(0, 1000)}`);
+          addMessage('system', todo.substring(0, 2000));
         } else if (action === 'next') {
-          const suggestion = await architect.suggestNextStep();
-          addMessage('system', suggestion);
+          addMessage('system', await architect.suggestNextStep());
         } else {
-          const report = await architect.getProjectStatus();
-          addMessage('system', report);
+          addMessage('system', await architect.getProjectStatus());
         }
         return true;
       }
@@ -271,32 +297,24 @@ const TUI = () => {
           setStatus('Listening...');
           try {
             const result = await voice.transcribeFromMicrophone(5);
-            addMessage('system', `🎤 Heard: "${result.text}" (${result.engine}, ${result.duration.toFixed(1)}s)`);
-            // Process the transcribed text as a regular message
+            addMessage('system', `"${result.text}" (${result.engine}, ${result.duration.toFixed(1)}s)`);
             setInput(result.text);
-          } catch (err: any) {
-            addMessage('system', `❌ Voice input failed: ${err.message}`);
-          }
+          } catch (err: any) { addMessage('system', `✗ ${err.message}`); }
         } else if (action === 'say') {
           const text = args.slice(1).join(' ');
-          if (text) {
-            setStatus('Speaking...');
-            const result = await voice.speak(text);
-            addMessage('system', result.success ? `🔊 Speaking...` : `❌ TTS failed`);
-          }
+          if (text) { setStatus('Speaking...'); const r = await voice.speak(text); addMessage('system', r.success ? '✓ Speaking' : '✗ TTS failed'); }
         } else {
-          const avail = voice.isAvailable();
-          addMessage('system', `🎤 Voice Status\nSTT: ${avail.stt ? 'available' : 'not installed'}\nTTS: ${avail.tts ? 'available' : 'not installed'}`);
+          const a = voice.isAvailable();
+          addMessage('system', `STT: ${a.stt ? 'available' : 'not installed'} | TTS: ${a.tts ? 'available' : 'not installed'}`);
         }
         return true;
       }
 
       case 'traits': {
-        const dna = engines.current.dna;
-        const profile = dna.getTraitProfile();
-        const history = dna.getTraitHistory().slice(-10);
-        const recent = history.map(h => `  ${h.trait}: ${h.delta > 0 ? '+' : ''}${h.delta.toFixed(2)} (${h.reason})`).join('\n');
-        addMessage('system', `🧠 Neural Drift Profile\n${profile}\n\nRecent shifts:\n${recent || '  No shifts yet'}`);
+        const d = engines.current.dna;
+        const h = d.getTraitHistory().slice(-10);
+        const recent = h.map(x => `  ${x.trait}: ${x.delta > 0 ? '+' : ''}${x.delta.toFixed(2)} (${x.reason})`).join('\n');
+        addMessage('system', `Neural Drift\n${d.getTraitProfile()}\n\nRecent:\n${recent || '  No shifts yet'}`);
         return true;
       }
 
@@ -307,15 +325,14 @@ const TUI = () => {
           const oldText = args[2] || '';
           const newText = args.slice(3).join(' ');
           const ok = await engines.current.patch.quickPatch(file, oldText, newText);
-          addMessage('system', ok ? `✅ Patched ${file}` : `❌ Could not find anchor in ${file}`);
+          addMessage('system', ok ? `✓ Patched ${file}` : `✗ Anchor not found in ${file}`);
         } else {
-          addMessage('system', 'Usage: /patch quick <file> "<old text>" "<new text>"');
+          addMessage('system', 'Usage: /patch quick <file> "old" "new"');
         }
         return true;
       }
 
-      default:
-        return false;
+      default: return false;
     }
   };
 
@@ -330,54 +347,40 @@ const TUI = () => {
     setMessages(prev => [...prev, userMsg]);
 
     try {
-      const { intent, transformer, memory, skills, evolution, llm, web, dna } = engines.current;
+      const { intent, memory, skills, evolution, llm, web, dna } = engines.current;
 
-      // Check for commands
       if (value.startsWith('/')) {
         const parts = value.slice(1).split(' ');
         const cmd = parts[0] || '';
         const args = parts.slice(1);
         const handled = await handleCommand(cmd, args);
-        if (handled) {
-          setStatus('Ready');
-          setLoading(false);
-          return;
-        }
+        if (handled) { setStatus('Ready'); setLoading(false); return; }
       }
 
       const perceivedIntent = await intent.perceive(value);
-
       if (perceivedIntent.isCommand) {
         const handled = await handleCommand(perceivedIntent.commandName || '', perceivedIntent.commandArgs || []);
-        if (!handled) addMessage('system', `Unknown command: /${perceivedIntent.commandName}`);
-        setStatus('Ready');
-        setLoading(false);
-        return;
+        if (!handled) addMessage('system', `Unknown: /${perceivedIntent.commandName}`);
+        setStatus('Ready'); setLoading(false); return;
       }
 
-      // Check if research needed
       let contextAddition = "";
       if (value.toLowerCase().includes('search') || value.toLowerCase().includes('web')) {
         setStatus('Researching...');
-        const searchResults = await web.search(value);
-        contextAddition = `\n\nWEB SEARCH RESULTS:\n${searchResults}`;
+        contextAddition = `\n\nWEB:\n${await web.search(value)}`;
       }
 
-      // Check if screenshot is requested
       let screenshotContext = "";
-      if (value.toLowerCase().includes('screenshot') || value.toLowerCase().includes('look at') || value.toLowerCase().includes('see the')) {
-        setStatus('Capturing vision...');
-        const capResult = await engines.current.oracle.captureScreen();
-        if (capResult.success) {
-          screenshotContext = `\n\n[SCREENSHOT CAPTURED: ${capResult.filePath}]\nThe user is asking you to look at something. A screenshot has been saved.`;
-        }
+      if (value.toLowerCase().includes('screenshot') || value.toLowerCase().includes('look at')) {
+        setStatus('Capturing...');
+        const cap = await engines.current.oracle.captureScreen();
+        if (cap.success) screenshotContext = `\n\n[SCREENSHOT: ${cap.filePath}]`;
       }
 
       const relevantMemory = await memory.recall(value, 5);
       const systemPrompt = llm.buildDefaultSystemPrompt() +
-        (skills.getActiveContext() ? `\n\nACTIVE SKILLS:\n${skills.getActiveContext()}` : '') +
-        contextAddition +
-        screenshotContext;
+        (skills.getActiveContext() ? `\n\nSKILLS:\n${skills.getActiveContext()}` : '') +
+        contextAddition + screenshotContext;
 
       const response = await llm.generate({
         systemPrompt,
@@ -392,21 +395,12 @@ const TUI = () => {
       await memory.remember('interaction', { input: value, output: response });
       await dna.logInteraction();
       setDnaData({ ...dna.rawData });
-
-      // Trigger micro-evolution
-      await evolution.analyze({
-        input: value,
-        output: response,
-        skills: dna.rawData.memory.active_skills
-      });
-
-      // Refresh DNA data after potential trait shifts
+      await evolution.analyze({ input: value, output: response, skills: dna.rawData.memory.active_skills });
       setDnaData({ ...dna.rawData });
       setStatus('Ready');
     } catch (err: any) {
-      console.error(' handleSubmit error:', err);
-      const errMsg = err?.message || err?.toString() || 'Unknown error';
-      addMessage('system', `❌ ${errMsg}`);
+      const errMsg = err?.message || 'Unknown error';
+      addMessage('system', `✗ ${errMsg}`);
       setStatus('Error');
     } finally {
       setLoading(false);
@@ -414,91 +408,165 @@ const TUI = () => {
     }
   };
 
-  if (!dnaData) return <Text color="cyan">⚡ Booting ULTIMATE v4...</Text>;
+  // ── Loading screen ─────────────────────────────
+  if (!dnaData) {
+    return (
+      <Box flexDirection="column" padding={2}>
+        <Text color={C.accent} bold> ⚡ ULTIMATE </Text>
+        <Text color={C.muted}> Loading...</Text>
+      </Box>
+    );
+  }
+
+  // ── Main layout ────────────────────────────────
+  const modeLabel = mode === 'chat' ? 'CHAT' : mode === 'museum' ? 'HISTORY' : 'BUILD';
+  const statusColor = status === 'Error' ? C.error : status === 'Ready' ? C.success : C.accent;
 
   return (
-    <Box flexDirection="column" height={process.stdout.rows - 2} padding={1}>
-      {/* Header */}
-      <Box borderStyle="double" borderColor="cyan" paddingX={1} marginBottom={1}>
-        <Text bold color="cyan"> ⚡ ULTIMATE v{dnaData.identity.version} [{mode.toUpperCase()}] </Text>
+    <Box flexDirection="column" height={process.stdout.rows - 2}>
+      {/* ── Top bar ─────────────────────────────── */}
+      <Box
+        flexDirection="row"
+        paddingX={1}
+        backgroundColor={C.headerBg}
+        borderStyle="single"
+        borderColor={C.border}
+      >
+        <Text bold color={C.fg}> ⚡ ULTIMATE </Text>
+        <Text color={C.dim}> v{dnaData.identity.version} </Text>
+        <Text color={C.dim}>│</Text>
+        <Text color={C.accent}> {modeLabel} </Text>
         <Spacer />
-        <Text color="gray"> {status} </Text>
+        <Text color={statusColor}>● </Text>
+        <Text color={C.muted}>{status}</Text>
       </Box>
 
-      <Box flexGrow={1}>
-        {/* Sidebar */}
-        <Box flexDirection="column" width={38} borderStyle="round" borderColor="blue" paddingX={1} marginRight={1}>
-          <Text bold color="blue">ENTITY STATE</Text>
-          <Text dimColor>Form: {dnaData.identity.currentForm}</Text>
-          <Text dimColor>Mutations: {dnaData.mutations}</Text>
+      <Box flexDirection="row" flexGrow={1}>
+        {/* ── Sidebar ───────────────────────────── */}
+        <Box
+          flexDirection="column"
+          width={32}
+          backgroundColor={C.sidebarBg}
+          borderStyle="single"
+          borderColor={C.border}
+          paddingX={1}
+        >
+          {/* Entity */}
+          <Box flexDirection="column" marginBottom={1}>
+            <Text bold color={C.muted}>ENTITY</Text>
+            <Text color={C.fg}> {dnaData.identity.currentForm}</Text>
+            <Text color={C.dim}> {dnaData.mutations} mutations · {dnaData.memory.interaction_count} msgs</Text>
+          </Box>
 
-          {/* Neural Drift Traits */}
-          <Box flexDirection="column" marginTop={1} height={9}>
-            <Text bold color="magenta">NEURAL DRIFT</Text>
+          {/* Traits */}
+          <Box flexDirection="column" marginBottom={1}>
+            <Text bold color={C.muted}>DRIFT</Text>
             {Object.entries(dnaData.traits || {}).map(([trait, val]: [string, any]) => {
-              const bar = '█'.repeat(Math.round(val * 10));
-              const empty = '░'.repeat(10 - Math.round(val * 10));
+              const filled = Math.round(val * 8);
+              const bar = '█'.repeat(filled) + '░'.repeat(8 - filled);
+              const color = val > 0.7 ? C.success : val < 0.3 ? C.error : C.warning;
               return (
-                <Text key={trait} color={val > 0.7 ? 'green' : val < 0.3 ? 'red' : 'yellow'}>
-                  {trait.substring(0, 6).padEnd(6)} {bar}{empty} {(val as number).toFixed(2)}
+                <Text key={trait} color={color}>
+                  {trait.substring(0, 7).padEnd(7)} {bar} {(val as number).toFixed(2)}
                 </Text>
               );
             })}
           </Box>
 
-          <Box flexDirection="column" marginTop={1} height={5}>
-            <Text bold color="yellow">PROACTIVE ALERTS</Text>
-            {alerts.map((a, i) => <Text key={i} color="gray">• {a.substring(0, 32)}...</Text>)}
-          </Box>
+          {/* Alerts */}
+          {alerts.length > 0 && (
+            <Box flexDirection="column" marginBottom={1}>
+              <Text bold color={C.muted}>ALERTS</Text>
+              {alerts.map((a, i) => (
+                <Text key={i} color={C.warning}> {a.substring(0, 28)}...</Text>
+              ))}
+            </Box>
+          )}
 
-          <Box flexDirection="column" marginTop={1}>
-            <Text bold color="cyan">SKILLS</Text>
-            {dnaData.memory.active_skills.slice(-5).map((s: string) => <Text key={s} color="gray">› {s}</Text>)}
-          </Box>
+          {/* Skills */}
+          {dnaData.memory.active_skills.length > 0 && (
+            <Box flexDirection="column" marginBottom={1}>
+              <Text bold color={C.muted}>SKILLS</Text>
+              {dnaData.memory.active_skills.slice(-4).map((s: string) => (
+                <Text key={s} color={C.dim}> {s}</Text>
+              ))}
+            </Box>
+          )}
+
           <Spacer />
-          <Text dimColor>Press [TAB] to cycle mode</Text>
+          <Text color={C.dim}> TAB cycle · /help</Text>
         </Box>
 
-        {/* Main View */}
-        <Box flexDirection="column" flexGrow={1} borderStyle="round" borderColor="gray" paddingX={1}>
+        {/* ── Main content ──────────────────────── */}
+        <Box flexDirection="column" flexGrow={1} borderStyle="single" borderColor={C.border} paddingX={1}>
           {mode === 'chat' && (
             <Box flexDirection="column" flexGrow={1}>
+              {/* Messages */}
               <Box flexGrow={1} flexDirection="column" overflow="hidden">
-                {messages.slice(-15).map((msg) => (
-                  <Box key={msg.timestamp} flexDirection="column" marginBottom={1}>
-                    <Text bold color={msg.role === 'user' ? 'magenta' : msg.role === 'system' ? 'yellow' : 'cyan'}>
-                      {msg.role === 'system' ? '⚙ SYSTEM →' : msg.role === 'user' ? 'YOU →' : 'ULTIMATE →'}
-                    </Text>
-                    <Text wrap="wrap">{msg.content}</Text>
+                {messages.length === 0 && (
+                  <Box flexDirection="column" marginTop={3}>
+                    <Text color={C.dim}> Ready for input. Type a message or /help for commands.</Text>
                   </Box>
-                ))}
+                )}
+                {messages.slice(-20).map((msg) => {
+                  const roleColor = msg.role === 'user' ? C.user : msg.role === 'system' ? C.system : C.ai;
+                  const roleIcon = msg.role === 'user' ? '›' : msg.role === 'system' ? '!' : '‹';
+                  return (
+                    <Box key={msg.timestamp} flexDirection="column" marginBottom={1}>
+                      <Text bold color={roleColor}> {roleIcon} {msg.role === 'user' ? 'You' : msg.role === 'system' ? 'System' : 'Ultimate'}</Text>
+                      <Text color={C.fg} wrap="wrap">{msg.content}</Text>
+                    </Box>
+                  );
+                })}
               </Box>
-              <Box borderStyle="single" borderColor="blue" paddingX={1}>
-                <Text color="magenta">PROMPT → </Text>
-                {loading ? <Spinner type="dots" /> : <TextInput value={input} onChange={setInput} onSubmit={handleSubmit} />}
+
+              {/* Input */}
+              <Box
+                borderStyle="single"
+                borderColor={loading ? C.accent : C.border}
+                paddingX={1}
+                flexDirection="row"
+              >
+                <Text color={C.accent}>❯ </Text>
+                {loading ? (
+                  <Text color={C.muted}><Spinner type="dots" /></Text>
+                ) : (
+                  <TextInput
+                    value={input}
+                    onChange={setInput}
+                    onSubmit={handleSubmit}
+                    placeholder="Type a message..."
+                  />
+                )}
               </Box>
             </Box>
           )}
 
           {mode === 'museum' && (
             <Box flexDirection="column">
-              <Text bold underline color="yellow">THE MUSEUM (Evolutionary History)</Text>
-              {snapshots.map((s, i) => (
-                <Box key={i} marginBottom={1}>
-                  <Text color="gray">[{new Date(s.timestamp).toLocaleString()}] </Text>
-                  <Text color="cyan">{s.reason}</Text>
-                </Box>
-              ))}
+              <Text bold color={C.fg}> Evolution History</Text>
+              <Text color={C.dim}>────────────────────────────────</Text>
+              {snapshots.length === 0 ? (
+                <Text color={C.muted}> No snapshots yet</Text>
+              ) : (
+                snapshots.map((s, i) => (
+                  <Box key={i} marginBottom={1}>
+                    <Text color={C.dim}> [{new Date(s.timestamp).toLocaleDateString()}] </Text>
+                    <Text color={C.accent}>{s.reason}</Text>
+                  </Box>
+                ))
+              )}
             </Box>
           )}
 
           {mode === 'architect' && (
             <Box flexDirection="column">
-              <Text bold underline color="green">THE ARCHITECT (Project Management)</Text>
-              <Text dimColor>Type commands: /architect analyze, /architect todo, /architect next, /architect status</Text>
+              <Text bold color={C.fg}> Project Architect</Text>
+              <Text color={C.dim}>────────────────────────────────</Text>
+              <Text color={C.muted}> /architect analyze · todo · next · status</Text>
               {messages.slice(-15).filter(m => m.role === 'system').map((msg, i) => (
                 <Box key={i} flexDirection="column" marginTop={1}>
-                  <Text color="yellow">{msg.content}</Text>
+                  <Text color={C.fg}>{msg.content}</Text>
                 </Box>
               ))}
             </Box>
@@ -509,8 +577,6 @@ const TUI = () => {
   );
 };
 
-// Run setup wizard BEFORE Ink takes over stdin
 await loadEnv();
 await setupWizard();
-
 render(<TUI />);
