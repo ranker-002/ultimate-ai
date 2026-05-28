@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { render, Box, Text, useInput, useApp, Spacer } from 'ink';
+import React, { useState, useEffect, useRef } from 'react';
+import { render, Box, Text, useInput, useApp } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 import { bootstrap } from './core/bootstrap.js';
@@ -22,73 +22,75 @@ import { Architect } from './core/architect.js';
 import fs from 'fs/promises';
 import path from 'path';
 
-const C = {
-  reset: '\x1b[0m',
-  bold: '\x1b[1m',
-  dim: '\x1b[2m',
-  cyan: '\x1b[36m',
-  blue: '\x1b[34m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  magenta: '\x1b[35m',
-  gray: '\x1b[90m',
-  white: '\x1b[37m',
-  bgDark: '\x1b[48;5;234m',
+// ANSI helpers
+const A = {
+  reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m', italic: '\x1b[3m',
+  cyan: '\x1b[36m', blue: '\x1b[34m', green: '\x1b[32m', yellow: '\x1b[33m',
+  red: '\x1b[31m', magenta: '\x1b[35m', gray: '\x1b[90m', white: '\x1b[37m',
+  brightWhite: '\x1b[97m', black: '\x1b[30m', bgBlue: '\x1b[44m',
 };
 
-function print(msg: string) { process.stdout.write(msg + '\n'); }
-function printLine(color: string, text: string) { process.stdout.write(`${color}${text}${C.reset}\n`); }
+const p = (s: string) => process.stdout.write(s + '\n');
+const prompt = () => `${A.bold}${A.cyan}❯${A.reset} `;
 
-// ── Print header to terminal scrollback ────────────
-function printHeader(dnaData: any, mode: string, status: string) {
-  const statusColor = status === 'Error' ? C.red : status === 'Ready' ? C.green : C.blue;
-  print(`${C.bold}${C.cyan} ⚡ ULTIMATE ${C.reset}${C.dim}v${dnaData.identity.version}${C.reset} ${C.gray}│${C.reset} ${C.blue}${mode.toUpperCase()}${C.reset} ${statusColor}●${C.reset} ${C.dim}${status}${C.reset}`);
-  print(`${C.gray}────────────────────────────────────────────${C.reset}`);
-}
-
-function printMessage(role: string, content: string) {
+// ── Print a message to terminal scrollback ────────
+function printMsg(role: string, content: string) {
   if (role === 'user') {
-    print(`${C.bold}${C.blue} > You${C.reset}`);
+    p(`${A.bold}${A.blue}you${A.reset}`);
   } else if (role === 'system') {
-    print(`${C.bold}${C.yellow} ! System${C.reset}`);
+    p(`${A.yellow}system${A.reset}`);
   } else {
-    print(`${C.bold}${C.green} < ULTIMATE${C.reset}`);
+    p(`${A.bold}${A.green}ult${A.reset}`);
   }
-  // Print content line by line with proper wrapping
+  // Print content preserving code blocks
   const lines = content.split('\n');
   for (const line of lines) {
-    print(`  ${C.white}${line}${C.reset}`);
+    if (line.startsWith('```')) {
+      p(`${A.dim}${line}${A.reset}`);
+    } else if (line.startsWith('#')) {
+      p(`${A.bold}${A.white}${line}${A.reset}`);
+    } else if (line.startsWith('- ') || line.startsWith('* ')) {
+      p(`  ${A.dim}•${A.reset} ${line.substring(2)}`);
+    } else if (line.match(/^\|/)) {
+      p(`${A.dim}${line}${A.reset}`);
+    } else {
+      p(`  ${line}`);
+    }
   }
-  print('');
+  p('');
 }
 
-function printStatus(dnaData: any, startTime: number) {
-  const uptime = Math.floor((Date.now() - startTime) / 1000);
-  print(`${C.bold}${C.white} ULTIMATE v${dnaData.identity.version}${C.reset}`);
-  print(`${C.gray}─────────────────────${C.reset}`);
-  print(`  Form:      ${C.white}${dnaData.identity.currentForm}${C.reset}`);
-  print(`  Mutations: ${C.white}${dnaData.mutations}${C.reset}`);
-  print(`  Memory:    ${C.white}${dnaData.memory.interaction_count} interactions${C.reset}`);
-  print(`  Traits:    ${C.white}${dnaData.traits ? Object.entries(dnaData.traits).map(([k,v]: [string,any]) => `${k}:${(v as number).toFixed(1)}`).join(' ') : 'none'}${C.reset}`);
-  print(`  Uptime:    ${C.white}${Math.floor(uptime / 60)}m ${uptime % 60}s${C.reset}`);
-  print('');
+function printWelcome(version: string) {
+  p(`${A.bold}${A.cyan}⚡ ULTIMATE${A.reset} ${A.dim}v${version}${A.reset}`);
+  p(`${A.dim}Type /help for commands${A.reset}`);
+  p('');
 }
 
 function printHelp() {
-  print(`${C.bold}${C.white} Commands${C.reset}`);
-  print(`${C.gray}─────────────────────${C.reset}`);
-  print(`  ${C.cyan}/quit${C.reset}              Exit`);
-  print(`  ${C.cyan}/clear${C.reset}             Clear screen`);
-  print(`  ${C.cyan}/status${C.reset}            System status`);
-  print(`  ${C.cyan}/help${C.reset}              Show this`);
-  print(`  ${C.cyan}/screenshot${C.reset}        Capture screen`);
-  print(`  ${C.cyan}/hive push|pull${C.reset}    Sync DNA`);
-  print(`  ${C.cyan}/architect${C.reset}         Project manage`);
-  print(`  ${C.cyan}/voice listen|say${C.reset}  Voice I/O`);
-  print(`  ${C.cyan}/traits${C.reset}            Drift profile`);
-  print(`  ${C.cyan}/patch quick${C.reset}       Surgical edit`);
-  print('');
+  p(`${A.bold}Commands${A.reset}`);
+  p(`${A.dim}─────────${A.reset}`);
+  p(`  ${A.cyan}/help${A.reset}         Show commands`);
+  p(`  ${A.cyan}/status${A.reset}       System info`);
+  p(`  ${A.cyan}/clear${A.reset}       Clear screen`);
+  p(`  ${A.cyan}/quit${A.reset}        Exit`);
+  p(`  ${A.cyan}/traits${A.reset}      Drift profile`);
+  p(`  ${A.cyan}/screenshot${A.reset}  Capture screen`);
+  p(`  ${A.cyan}/hive${A.reset}        Sync: push|pull|status`);
+  p(`  ${A.cyan}/architect${A.reset}   Build: analyze|todo|next`);
+  p(`  ${A.cyan}/voice${A.reset}       Audio: listen|say`);
+  p(`  ${A.cyan}/patch${A.reset}       Edit: quick <file>`);
+  p('');
+}
+
+function printStatus(dna: any, startTime: number) {
+  const uptime = Math.floor((Date.now() - startTime) / 1000);
+  p(`${A.bold}ULTIMATE v${dna.identity.version}${A.reset} ${A.dim}·${A.reset} ${dna.identity.currentForm}`);
+  p(`${A.dim}──────────────${A.reset}`);
+  p(`  mutations   ${dna.mutations}`);
+  p(`  memory      ${dna.memory.interaction_count} interactions`);
+  p(`  drift       ${dna.traits ? Object.entries(dna.traits).map(([k,v]: [string,any]) => `${k}:${(v as number).toFixed(1)}`).join(' ') : 'none'}`);
+  p(`  uptime      ${Math.floor(uptime/60)}m ${uptime%60}s`);
+  p('');
 }
 
 // ── Ink TUI (input only) ──────────────────────────
@@ -96,9 +98,8 @@ const TUI = () => {
   const { exit } = useApp();
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [ready, setReady] = useState(false);
   const [dnaData, setDnaData] = useState<any>(null);
-  const [status, setStatus] = useState('Initializing...');
-  const [startTime] = useState(Date.now());
 
   const engines = useRef<{
     intent: IntentEngine; transformer: Transformer; memory: UniversalMemory;
@@ -109,8 +110,7 @@ const TUI = () => {
 
   const processingLock = useRef(false);
   const bgRef = useRef<BackgroundEvolution | null>(null);
-  const modeRef = useRef('chat');
-  const alertCount = useRef(0);
+  const startTimeRef = useRef(Date.now());
 
   useEffect(() => {
     const init = async () => {
@@ -137,24 +137,15 @@ const TUI = () => {
       };
 
       setDnaData(dna.rawData);
-      setStatus('Ready');
 
-      // Clear terminal and print welcome
+      // Clear and print welcome
       process.stdout.write('\x1b[2J\x1b[H');
-      print(`${C.bold}${C.cyan} ⚡ ULTIMATE ${C.reset}${C.dim}v${dna.rawData.identity.version}${C.reset}`);
-      print(`${C.dim}  Ready. Type a message or /help${C.reset}`);
-      print('');
+      printWelcome(dna.rawData.identity.version);
 
       const bg = new BackgroundEvolution();
       bgRef.current = bg;
       bg.start();
-
-      omni.onAlert((alert) => {
-        alertCount.current++;
-        if (alertCount.current <= 3) {
-          print(`${C.yellow} ⚠ ${alert}${C.reset}`);
-        }
-      });
+      omni.onAlert(() => {});
 
       process.on('SIGINT', () => {
         omni.stop();
@@ -162,14 +153,14 @@ const TUI = () => {
         dna.save().catch(() => {});
         process.exit(0);
       });
+
+      setReady(true);
     };
     init();
   }, []);
 
   useInput((_, key) => {
-    if (key.tab) {
-      modeRef.current = modeRef.current === 'chat' ? 'museum' : modeRef.current === 'museum' ? 'architect' : 'chat';
-    }
+    if (key.tab) {}
   });
 
   const handleCommand = async (cmd: string, args: string[]): Promise<boolean> => {
@@ -177,57 +168,53 @@ const TUI = () => {
     const { oracle, hive, voice, architect, dna } = engines.current;
     switch (cmd) {
       case 'quit': exit(); return true;
-      case 'clear': process.stdout.write('\x1b[2J\x1b[H'); return true;
-      case 'status': printStatus(dna.rawData, startTime); return true;
+      case 'clear': process.stdout.write('\x1b[2J\x1b[H'); printWelcome(dna.rawData.identity.version); return true;
+      case 'status': printStatus(dna.rawData, startTimeRef.current); return true;
       case 'help': printHelp(); return true;
       case 'screenshot': {
-        setStatus('Capturing...');
         const r = args[0] === 'terminal' ? await oracle.captureTerminal() : await oracle.captureScreen();
-        printMessage('system', r.success ? `✓ ${r.filePath}` : `✗ ${r.error}`);
+        printMsg('system', r.success ? `captured: ${r.filePath}` : `failed: ${r.error}`);
         return true;
       }
       case 'hive': {
         const a = args[0] || 'status';
-        if (a === 'push') { setStatus('Syncing...'); printMessage('system', (await hive.push()).message); }
-        else if (a === 'pull') { setStatus('Pulling...'); printMessage('system', (await hive.pull()).message); }
-        else { const s = await hive.getStatus(); printMessage('system', `Hive: ${s.configured ? 'synced' : 'offline'} | Device: ${s.device}`); }
+        if (a === 'push') { printMsg('system', (await hive.push()).message); }
+        else if (a === 'pull') { printMsg('system', (await hive.pull()).message); }
+        else { const s = await hive.getStatus(); printMsg('system', `hive: ${s.configured ? 'synced' : 'offline'} · device: ${s.device}`); }
         return true;
       }
       case 'architect': {
         const a = args[0] || 'status';
-        setStatus('Working...');
-        if (a === 'analyze') { const c = await architect.analyzeProject(); printMessage('system', `${c.name} · ${c.currentPhase}`); }
-        else if (a === 'todo') { printMessage('system', (await architect.generateTODO()).substring(0, 2000)); }
-        else if (a === 'next') { printMessage('system', await architect.suggestNextStep()); }
-        else { printMessage('system', await architect.getProjectStatus()); }
+        if (a === 'analyze') { const c = await architect.analyzeProject(); printMsg('system', `${c.name} · ${c.currentPhase} · ${c.techStack.join(', ')}`); }
+        else if (a === 'todo') { printMsg('system', (await architect.generateTODO()).substring(0, 2000)); }
+        else if (a === 'next') { printMsg('system', await architect.suggestNextStep()); }
+        else { printMsg('system', await architect.getProjectStatus()); }
         return true;
       }
       case 'voice': {
         const a = args[0] || 'status';
         if (a === 'listen') {
-          setStatus('Listening...');
-          try { const r = await voice.transcribeFromMicrophone(5); printMessage('system', `"${r.text}" (${r.engine})`); setInput(r.text); }
-          catch (e: any) { printMessage('system', `✗ ${e.message}`); }
+          try { const r = await voice.transcribeFromMicrophone(5); printMsg('system', `"${r.text}" (${r.engine})`); setInput(r.text); }
+          catch (e: any) { printMsg('system', e.message); }
         } else if (a === 'say' && args.length > 1) {
           const r = await voice.speak(args.slice(1).join(' '));
-          printMessage('system', r.success ? '✓ Speaking' : '✗ TTS failed');
+          printMsg('system', r.success ? 'speaking' : 'tts failed');
         } else {
           const av = voice.isAvailable();
-          printMessage('system', `STT: ${av.stt ? 'on' : 'off'} | TTS: ${av.tts ? 'on' : 'off'}`);
+          printMsg('system', `stt: ${av.stt ? 'on' : 'off'} tts: ${av.tts ? 'on' : 'off'}`);
         }
         return true;
       }
       case 'traits': {
-        const d = engines.current.dna;
-        printMessage('system', `Drift: ${d.getTraitProfile()}`);
+        printMsg('system', engines.current.dna.getTraitProfile());
         return true;
       }
       case 'patch': {
         if (args[0] === 'quick' && args.length >= 4) {
-          const file = args[1] || '';
-          const ok = await engines.current.patch.quickPatch(file, args[2] || '', args.slice(3).join(' '));
-          printMessage('system', ok ? `✓ ${file}` : `✗ Anchor not found`);
-        } else { printMessage('system', 'Usage: /patch quick <file> "old" "new"'); }
+          const f = args[1] || '';
+          const ok = await engines.current.patch.quickPatch(f, args[2] || '', args.slice(3).join(' '));
+          printMsg('system', ok ? `patched: ${f}` : 'anchor not found');
+        } else { printMsg('system', 'usage: /patch quick <file> "old" "new"'); }
         return true;
       }
       default: return false;
@@ -238,29 +225,33 @@ const TUI = () => {
     if (!value || loading || !engines.current || processingLock.current) return;
     processingLock.current = true;
     setInput('');
+
+    // Print user message
+    printMsg('user', value);
+
+    // Check for commands
+    if (value.startsWith('/')) {
+      const parts = value.slice(1).split(' ');
+      const handled = await handleCommand(parts[0] || '', parts.slice(1));
+      if (handled) { processingLock.current = false; return; }
+    }
+
     setLoading(true);
-    setStatus('Thinking...');
-
-    // Print user message immediately to scrollback
-    printMessage('user', value);
-
     try {
       const { intent, memory, skills, evolution, llm, web, dna } = engines.current;
-      if (value.startsWith('/')) {
-        const parts = value.slice(1).split(' ');
-        const handled = await handleCommand(parts[0] || '', parts.slice(1));
-        if (handled) { setStatus('Ready'); setLoading(false); return; }
-      }
+
       const pi = await intent.perceive(value);
       if (pi.isCommand) {
         const handled = await handleCommand(pi.commandName || '', pi.commandArgs || []);
-        if (!handled) printMessage('system', `Unknown: /${pi.commandName}`);
-        setStatus('Ready'); setLoading(false); return;
+        if (!handled) printMsg('system', `unknown: /${pi.commandName}`);
+        processingLock.current = false;
+        setLoading(false);
+        return;
       }
 
       let ctx = "";
       if (value.toLowerCase().includes('search') || value.toLowerCase().includes('web')) {
-        setStatus('Researching...'); ctx = `\n\nWEB:\n${await web.search(value)}`;
+        ctx = `\n\nWEB:\n${await web.search(value)}`;
       }
 
       const mem = await memory.recall(value, 5);
@@ -275,40 +266,36 @@ const TUI = () => {
         ] as any
       });
 
-      // Print response to scrollback
-      printMessage('assistant', response);
-
+      printMsg('assistant', response);
       await memory.remember('interaction', { input: value, output: response });
       await dna.logInteraction();
       setDnaData({ ...dna.rawData });
       await evolution.analyze({ input: value, output: response, skills: dna.rawData.memory.active_skills });
       setDnaData({ ...dna.rawData });
-      setStatus('Ready');
     } catch (err: any) {
-      printMessage('system', `✗ ${err?.message || 'Unknown error'}`);
-      setStatus('Error');
+      printMsg('system', `error: ${err?.message || 'unknown'}`);
     } finally {
       setLoading(false);
       processingLock.current = false;
     }
   };
 
-  if (!dnaData) {
+  if (!ready) {
     return (
-      <Box flexDirection="column" padding={1}>
-        <Text color="cyan" bold> ⚡ ULTIMATE Loading...</Text>
+      <Box padding={0}>
+        <Text dimColor> Loading...</Text>
       </Box>
     );
   }
 
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor="#333" paddingX={1}>
-      <Box flexDirection="row">
-        <Text color="#0070f3" bold> ❯ </Text>
-        {loading ? <Spinner type="dots" /> : (
-          <TextInput value={input} onChange={setInput} onSubmit={handleSubmit} placeholder="Type a message..." />
-        )}
-      </Box>
+    <Box flexDirection="row" paddingX={0}>
+      {loading ? (
+        <Text color="cyan">❯ </Text>
+      ) : (
+        <TextInput value={input} onChange={setInput} onSubmit={handleSubmit} placeholder="Message..." />
+      )}
+      {loading && <Spinner type="dots" />}
     </Box>
   );
 };
