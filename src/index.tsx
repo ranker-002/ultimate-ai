@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { render, Box, Text, useInput, useApp, Static, Spacer } from 'ink';
+import { render, Box, Text, useInput, useApp, Spacer } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 import { bootstrap } from './core/bootstrap.js';
@@ -463,17 +463,15 @@ const TUI = () => {
         <Box flexDirection="column" flexGrow={1} borderStyle="round" borderColor="gray" paddingX={1}>
           {mode === 'chat' && (
             <Box flexDirection="column" flexGrow={1}>
-              <Box flexGrow={1} flexDirection="column">
-                <Static items={messages.slice(-10)}>
-                  {(msg: Message) => (
-                    <Box key={msg.timestamp} flexDirection="column" marginBottom={1}>
-                      <Text bold color={msg.role === 'user' ? 'magenta' : msg.role === 'system' ? 'yellow' : 'cyan'}>
-                        {msg.role === 'system' ? '⚙ SYSTEM →' : msg.role === 'user' ? 'YOU →' : 'ULTIMATE →'}
-                      </Text>
-                      <Text>{msg.content}</Text>
-                    </Box>
-                  )}
-                </Static>
+              <Box flexGrow={1} flexDirection="column" overflow="hidden">
+                {messages.slice(-15).map((msg) => (
+                  <Box key={msg.timestamp} flexDirection="column" marginBottom={1}>
+                    <Text bold color={msg.role === 'user' ? 'magenta' : msg.role === 'system' ? 'yellow' : 'cyan'}>
+                      {msg.role === 'system' ? '⚙ SYSTEM →' : msg.role === 'user' ? 'YOU →' : 'ULTIMATE →'}
+                    </Text>
+                    <Text wrap="wrap">{msg.content}</Text>
+                  </Box>
+                ))}
               </Box>
               <Box borderStyle="single" borderColor="blue" paddingX={1}>
                 <Text color="magenta">PROMPT → </Text>
