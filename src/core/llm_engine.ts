@@ -35,7 +35,7 @@ class OpenRouterProvider implements LLMProvider {
     ];
 
     const result = await callModel(this.client, {
-      model: options.model || 'qwen/qwen-32b-chat',
+      model: options.model || 'deepseek/deepseek-v4-flash:free',
       input: messages as any,
       maxOutputTokens: options.maxTokens || 4096,
     });
