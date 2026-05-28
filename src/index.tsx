@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { render, Box, Text, useInput, useApp, Spacer } from 'ink';
+import { render, Box, Text, useInput, useApp, Spacer, useStdin } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 import { bootstrap } from './core/bootstrap.js';
@@ -60,6 +60,7 @@ const TUI = () => {
   const [alerts, setAlerts] = useState<string[]>([]);
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [startTime] = useState(Date.now());
+  const [dimensions, setDimensions] = useState({ rows: process.stdout.rows || 24, cols: process.stdout.columns || 80 });
 
   const engines = useRef<{
     intent: IntentEngine;
@@ -139,6 +140,11 @@ const TUI = () => {
       };
       process.on('SIGINT', shutdown);
       process.on('SIGTERM', shutdown);
+
+      // Handle terminal resize
+      process.stdout.on('resize', () => {
+        setDimensions({ rows: process.stdout.rows || 24, cols: process.stdout.columns || 80 });
+      });
     };
 
     init();
@@ -423,7 +429,7 @@ const TUI = () => {
   const statusColor = status === 'Error' ? C.error : status === 'Ready' ? C.success : C.accent;
 
   return (
-    <Box flexDirection="column" height={process.stdout.rows - 2}>
+    <Box flexDirection="column" height={dimensions.rows} width={dimensions.cols}>
       {/* ── Top bar ─────────────────────────────── */}
       <Box
         flexDirection="row"
@@ -445,7 +451,7 @@ const TUI = () => {
         {/* ── Sidebar ───────────────────────────── */}
         <Box
           flexDirection="column"
-          width={28}
+          width={dimensions.cols >= 100 ? 28 : 22}
           backgroundColor={C.sidebarBg}
           borderStyle="single"
           borderColor={C.border}
