@@ -117,14 +117,28 @@ export class LLMEngine {
   }
 
   async generate(options: LLMGenerateOptions): Promise<string> {
+    if (!process.env.OPENROUTER_API_KEY) {
+      throw new Error('OPENROUTER_API_KEY not set. Run: export OPENROUTER_API_KEY=your_key');
+    }
+
     const provider = this.providers[this.activeProviderName];
     if (!provider) {
       throw new Error(`Provider ${this.activeProviderName} not configured.`);
     }
 
+    const timeout = 30000; // 30s timeout
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+
     try {
-      return await provider.generate(options);
+      return await Promise.race([
+        provider.generate(options),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('LLM request timed out (30s). Check your API key and network.')), timeout);
+        })
+      ]);
     } catch (err: any) {
+      clearTimeout(timer);
       if (this.activeProviderName === 'openrouter' && err.message.includes('API key')) {
         console.log('⚠️ OpenRouter key missing or invalid. Falling back to local Ollama...');
         return await this.providers['ollama']!.generate(options);
